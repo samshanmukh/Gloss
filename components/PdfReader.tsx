@@ -24,7 +24,6 @@ export default function PdfReader({
   useEffect(() => {
     let disposed = false;
     let loadingTask: { destroy: () => Promise<void> } | undefined;
-    let document: { destroy: () => Promise<void> } | undefined;
     const renderTasks: Array<{ cancel: () => void }> = [];
     const textLayers: Array<{ cancel: () => void }> = [];
 
@@ -47,7 +46,6 @@ export default function PdfReader({
         const task = pdfjs.getDocument({ data });
         loadingTask = task;
         const pdf = await task.promise;
-        document = pdf;
         if (disposed) return;
 
         onDocumentReady(pdf.numPages);
@@ -114,7 +112,6 @@ export default function PdfReader({
       disposed = true;
       renderTasks.forEach((task) => task.cancel());
       textLayers.forEach((layer) => layer.cancel());
-      void document?.destroy();
       void loadingTask?.destroy();
     };
   }, [file, onDocumentReady, scale]);
