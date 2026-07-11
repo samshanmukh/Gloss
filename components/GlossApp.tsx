@@ -6,7 +6,6 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
-  Clock3,
   FileText,
   Focus,
   GraduationCap,
@@ -14,7 +13,6 @@ import {
   Library,
   Link2,
   Menu,
-  MessageSquareText,
   Network,
   PanelRight,
   RotateCcw,
@@ -67,9 +65,12 @@ export default function GlossApp() {
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    const stored = memoryAdapter.read();
-    setMemory(stored);
-    setConfirmed(stored.mastered.includes("reward_signal"));
+    const frame = window.requestAnimationFrame(() => {
+      const stored = memoryAdapter.read();
+      setMemory(stored);
+      setConfirmed(stored.mastered.includes("reward_signal"));
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const personalized = paper === "td" && memory.mastered.includes("reward_signal");
