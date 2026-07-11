@@ -125,3 +125,26 @@ export async function storeConfirmedConcept({
     concept,
   };
 }
+
+export async function recordTutorExchange({
+  learnerId,
+  sessionId,
+  question,
+  answer,
+}: {
+  learnerId: string;
+  sessionId: string;
+  question: string;
+  answer: string;
+}) {
+  const timestamp = Date.now();
+  await request<EverOSResponse<unknown>>("/memories", {
+    user_id: learnerId,
+    session_id: sessionId,
+    async_mode: true,
+    messages: [
+      { role: "user", timestamp, content: question },
+      { role: "assistant", timestamp: timestamp + 1, content: answer },
+    ],
+  });
+}

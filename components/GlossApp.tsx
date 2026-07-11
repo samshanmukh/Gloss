@@ -257,17 +257,23 @@ export default function GlossApp() {
     const entry: QAEntry = { id: nextId("qa"), question, answer: "", pending: true };
     setQaEntries((current) => [...current, entry]);
 
-    const context =
+    const passage =
       source === "pdf"
         ? active?.text ?? ""
         : `${PAPER_COPY[source as PaperId].selection} ${PAPER_COPY[source as PaperId].after}`;
-    const sourceName =
+    const paperTitle =
       source === "pdf"
         ? `${pdfFile?.name ?? "Uploaded PDF"} (page ${active?.page ?? "?"})`
         : PAPER_META[source as PaperId].title;
+    const history = qaEntries
+      .filter((item) => !item.pending && !item.error)
+      .flatMap((item) => [
+        { role: "user" as const, content: item.question },
+        { role: "assistant" as const, content: item.answer },
+      ]);
 
     try {
-      const answer = await memoryAdapter.ask({ learnerId, question, context, source: sourceName });
+      const answer = await memoryAdapter.ask({ learnerId, question, passage, paperTitle, history });
       setQaEntries((current) =>
         current.map((item) => (item.id === entry.id ? { ...item, answer, pending: false } : item)),
       );
