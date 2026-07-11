@@ -15,6 +15,14 @@ export type LearnerMemory = {
   mastered: string[];
 };
 
+export type MemorySyncState = "checking" | "connected" | "syncing" | "synced" | "offline";
+
+export type RetrievedLearnerMemory = {
+  available: boolean;
+  hasRewardSignal: boolean;
+  evidence: string[];
+};
+
 export const PAPER_META = {
   cortical: {
     shortTitle: "Paper 1",
@@ -54,6 +62,40 @@ export const memoryAdapter = {
   },
   reset() {
     window.localStorage.removeItem(STORAGE_KEY);
+  },
+  async retrieve(query: string): Promise<RetrievedLearnerMemory> {
+    const response = await fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "retrieve", learnerId: "sam", query }),
+    });
+    const result = (await response.json()) as RetrievedLearnerMemory & { error?: string };
+    if (!response.ok) throw new Error(result.error || "EverOS retrieval failed");
+    return result;
+  },
+  async confirm({
+    concept,
+    understanding,
+    learnedFrom,
+  }: {
+    concept: string;
+    understanding: string;
+    learnedFrom: string;
+  }) {
+    const response = await fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "confirm",
+        learnerId: "sam",
+        concept,
+        understanding,
+        learnedFrom,
+      }),
+    });
+    const result = (await response.json()) as { available: boolean; status?: string; error?: string };
+    if (!response.ok) throw new Error(result.error || "EverOS write failed");
+    return result;
   },
 };
 

@@ -22,7 +22,14 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { BASE_CONCEPTS, INITIAL_MEMORY, PAPER_META, PaperId, memoryAdapter } from "@/lib/gloss";
+import {
+  BASE_CONCEPTS,
+  INITIAL_MEMORY,
+  MemorySyncState,
+  PAPER_META,
+  PaperId,
+  memoryAdapter,
+} from "@/lib/gloss";
 
 type GraphTab = "graph" | "timeline";
 
@@ -63,12 +70,28 @@ export default function GlossApp() {
   const [graphTab, setGraphTab] = useState<GraphTab>("graph");
   const [showGraph, setShowGraph] = useState(false);
   const [note, setNote] = useState("");
+  const [syncState, setSyncState] = useState<MemorySyncState>("checking");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const stored = memoryAdapter.read();
       setMemory(stored);
       setConfirmed(stored.mastered.includes("reward_signal"));
+      void memoryAdapter
+        .retrieve("confirmed concepts, learning style, and understanding of reward signals")
+        .then((remote) => {
+          if (remote.hasRewardSignal) {
+            const merged = {
+              ...stored,
+              mastered: Array.from(new Set([...stored.mastered, "reward_signal"])),
+            };
+            setMemory(merged);
+            setConfirmed(true);
+            memoryAdapter.write(merged);
+          }
+          setSyncState("connected");
+        })
+        .catch(() => setSyncState("offline"));
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -85,11 +108,31 @@ export default function GlossApp() {
     [confirmed, explained, personalized],
   );
 
-  function openPaper(next: PaperId) {
+  async function openPaper(next: PaperId) {
     setPaper(next);
     setExplained(false);
     setShowGraph(next === "td" && memory.mastered.includes("reward_signal"));
     setNote("");
+    if (next === "td") {
+      setSyncState("checking");
+      try {
+        const remote = await memoryAdapter.retrieve(
+          "What has Sam already mastered that relates to rewards, predictions, and temporal-difference learning?",
+        );
+        if (remote.hasRewardSignal) {
+          const merged = {
+            ...memory,
+            mastered: Array.from(new Set([...memory.mastered, "reward_signal"])),
+          };
+          setMemory(merged);
+          setConfirmed(true);
+          memoryAdapter.write(merged);
+        }
+        setSyncState("connected");
+      } catch {
+        setSyncState("offline");
+      }
+    }
   }
 
   function explainSelection() {
@@ -99,14 +142,31 @@ export default function GlossApp() {
     }
   }
 
-  function confirmUnderstanding() {
+  async function confirmUnderstanding() {
+    const conceptId = paper === "cortical" ? "reward_signal" : "td_error";
+    if (memory.mastered.includes(conceptId)) return;
     const next = {
       ...memory,
-      mastered: Array.from(new Set([...memory.mastered, paper === "cortical" ? "reward_signal" : "td_error"])),
+      mastered: Array.from(new Set([...memory.mastered, conceptId])),
     };
     setMemory(next);
     memoryAdapter.write(next);
     if (paper === "cortical") setConfirmed(true);
+    setSyncState("syncing");
+
+    try {
+      await memoryAdapter.confirm({
+        concept: paper === "cortical" ? "reward signal" : "temporal-difference error",
+        understanding:
+          paper === "cortical"
+            ? "a scalar feedback value that tells an agent whether its latest action moved it closer to its goal"
+            : "the surprise gap between the reward an agent expected and the reward it actually received",
+        learnedFrom: PAPER_META[paper].title,
+      });
+      setSyncState("synced");
+    } catch {
+      setSyncState("offline");
+    }
   }
 
   function resetDemo() {
@@ -116,11 +176,18 @@ export default function GlossApp() {
     setExplained(true);
     setConfirmed(false);
     setShowGraph(false);
+    setSyncState("connected");
   }
 
   return (
     <main className="app-shell">
-      <Sidebar paper={paper} onOpenPaper={openPaper} onReset={resetDemo} confirmed={confirmed} />
+      <Sidebar
+        paper={paper}
+        onOpenPaper={openPaper}
+        onReset={resetDemo}
+        confirmed={confirmed}
+        syncState={syncState}
+      />
 
       <section className="workspace">
         <Header paper={paper} />
@@ -131,6 +198,7 @@ export default function GlossApp() {
             explained={explained}
             personalized={personalized}
             confirmed={paper === "cortical" ? confirmed : memory.mastered.includes("td_error")}
+            syncState={syncState}
             note={note}
             onNote={setNote}
             onConfirm={confirmUnderstanding}
@@ -154,12 +222,22 @@ function Sidebar({
   onOpenPaper,
   onReset,
   confirmed,
+  syncState,
 }: {
   paper: PaperId;
   onOpenPaper: (paper: PaperId) => void;
   onReset: () => void;
   confirmed: boolean;
+  syncState: MemorySyncState;
 }) {
+  const syncMessage = {
+    checking: "Retrieving learner memory…",
+    connected: confirmed ? "Memory retrieved" : "Connected · ready",
+    syncing: "Writing confirmed concept…",
+    synced: "Concept saved to EverOS",
+    offline: "Offline · saved on device",
+  }[syncState];
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -194,11 +272,11 @@ function Sidebar({
         </dl>
       </div>
       <div className="sync-card">
-        <span className={`sync-dot ${confirmed ? "live" : ""}`} />
-        <div><strong>EverOS memory</strong><small>{confirmed ? "Reward signal synced" : "Ready to remember"}</small></div>
-        <Check size={14} />
+        <span className={`sync-dot ${syncState !== "offline" ? "live" : ""} ${syncState}`} />
+        <div><strong>EverOS memory</strong><small>{syncMessage}</small></div>
+        {syncState === "synced" || syncState === "connected" ? <Check size={14} /> : <BrainCircuit size={14} />}
       </div>
-      <button className="reset-button" onClick={onReset}><RotateCcw size={14} /> Reset demo</button>
+      <button className="reset-button" onClick={onReset}><RotateCcw size={14} /> Reset local demo</button>
     </aside>
   );
 }
@@ -283,6 +361,7 @@ function ExplanationPane({
   explained,
   personalized,
   confirmed,
+  syncState,
   note,
   onNote,
   onConfirm,
@@ -292,6 +371,7 @@ function ExplanationPane({
   explained: boolean;
   personalized: boolean;
   confirmed: boolean;
+  syncState: MemorySyncState;
   note: string;
   onNote: (note: string) => void;
   onConfirm: () => void;
@@ -323,7 +403,7 @@ function ExplanationPane({
               <p className="eyebrow">Built on your knowledge</p>
               <div className="memory-card">
                 <div className="memory-icon"><Link2 size={15} /></div>
-                <div><strong>Reward signal</strong><p>From <em>Embodied Neurocomputation</em></p><button>View in graph →</button></div>
+                <div><strong>Reward signal</strong><p>Retrieved via EverOS · <em>Embodied Neurocomputation</em></p><button>View in graph →</button></div>
               </div>
             </div>
           )}
@@ -336,7 +416,9 @@ function ExplanationPane({
             onChange={(event) => onNote(event.target.value)}
           />
           <div className="explanation-footer">
-            <span>{confirmed ? "Saved to your understanding" : "Does this make sense?"}</span>
+            <span>{confirmed
+              ? syncState === "offline" ? "Saved on this device" : "Saved to your understanding"
+              : "Does this make sense?"}</span>
             <button className={`understand-button ${confirmed ? "confirmed" : ""}`} onClick={onConfirm}>
               {confirmed ? <Check size={15} /> : <BrainCircuit size={15} />}
               {confirmed ? "Understood" : "Add to understanding"}

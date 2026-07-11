@@ -93,6 +93,8 @@ button { color: inherit; }
 .sync-card > svg { color: #3dbb7b; }
 .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #65708b; box-shadow: 0 0 0 3px #65708b1f; }
 .sync-dot.live { background: #38bd7b; box-shadow: 0 0 9px #38bd7b; }
+.sync-dot.checking, .sync-dot.syncing { animation: memory-pulse 1s ease-in-out infinite; }
+.sync-dot.offline { background: #e6a451; box-shadow: 0 0 0 3px #e6a4511f; }
 .reset-button { display: flex; align-items: center; gap: 6px; margin: 8px auto 0; font-size: 8px; color: #6f7895; }
 .reset-button:hover { color: white; }
 
@@ -304,6 +306,7 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 @keyframes appear { from { opacity: 0; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes node-arrive { from { opacity: 0; scale: .4; } 60% { scale: 1.12; } to { opacity: 1; scale: 1; } }
+@keyframes memory-pulse { 50% { opacity: .4; transform: scale(.75); } }
 
 @media (max-width: 1180px) {
   .sidebar { width: 196px; flex-basis: 196px; }
