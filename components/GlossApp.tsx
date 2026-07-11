@@ -2,6 +2,7 @@
 
 import {
   BookOpen,
+  Bot,
   BrainCircuit,
   Check,
   ChevronDown,
@@ -19,6 +20,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Send,
   Sparkles,
   StickyNote,
   Upload,
@@ -29,10 +31,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PdfReader from "@/components/PdfReader";
 import {
   BASE_CONCEPTS,
+  ChatMessage,
   INITIAL_MEMORY,
   MemorySyncState,
   PAPER_META,
   PaperId,
+  chatAdapter,
   memoryAdapter,
 } from "@/lib/gloss";
 
@@ -80,6 +84,10 @@ export default function GlossApp() {
   const [uploadedSelection, setUploadedSelection] = useState("");
   const [pdfScale, setPdfScale] = useState(1);
   const [pdfPages, setPdfPages] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -124,6 +132,9 @@ export default function GlossApp() {
     setExplained(false);
     setShowGraph(next === "td" && memory.mastered.includes("reward_signal"));
     setNote("");
+    setChatMessages([]);
+    setChatDraft("");
+    setChatError("");
     if (next === "td") {
       setSyncState("checking");
       try {
@@ -161,12 +172,59 @@ export default function GlossApp() {
     setExplained(false);
     setShowGraph(false);
     setNote("");
+    setChatMessages([]);
+    setChatDraft("");
+    setChatError("");
   }
 
   const explainUploadedSelection = useCallback((text: string) => {
     setUploadedSelection(text);
     setExplained(true);
+    setChatMessages([]);
+    setChatDraft("");
+    setChatError("");
   }, []);
+
+  async function askTutor() {
+    const question = chatDraft.trim();
+    const passage = uploadedPdf ? uploadedSelection : PAPER_COPY[paper].selection;
+    const paperTitle = uploadedPdf?.name ?? PAPER_META[paper].title;
+    if (!question || !passage || chatLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: question,
+    };
+    const previousMessages = chatMessages;
+    setChatMessages((messages) => [...messages, userMessage]);
+    setChatDraft("");
+    setChatError("");
+    setChatLoading(true);
+
+    try {
+      const result = await chatAdapter.send({
+        passage,
+        paperTitle,
+        question,
+        history: previousMessages,
+      });
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: result.answer,
+          provider: result.provider,
+          model: result.model,
+        },
+      ]);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : "Gloss could not answer right now.");
+    } finally {
+      setChatLoading(false);
+    }
+  }
 
   async function confirmUnderstanding() {
     const conceptId = paper === "cortical" ? "reward_signal" : "td_error";
@@ -205,6 +263,9 @@ export default function GlossApp() {
     setSyncState("connected");
     setUploadedPdf(null);
     setUploadedSelection("");
+    setChatMessages([]);
+    setChatDraft("");
+    setChatError("");
   }
 
   return (
@@ -240,6 +301,12 @@ export default function GlossApp() {
               syncState={syncState}
               uploadedSelection={uploadedSelection}
               uploadedName={uploadedPdf?.name}
+              chatMessages={chatMessages}
+              chatDraft={chatDraft}
+              chatLoading={chatLoading}
+              chatError={chatError}
+              onChatDraft={setChatDraft}
+              onAskTutor={askTutor}
               note={note}
               onNote={setNote}
               onConfirm={confirmUnderstanding}
@@ -503,6 +570,12 @@ function ExplanationPane({
   syncState,
   uploadedSelection,
   uploadedName,
+  chatMessages,
+  chatDraft,
+  chatLoading,
+  chatError,
+  onChatDraft,
+  onAskTutor,
   note,
   onNote,
   onConfirm,
@@ -515,6 +588,12 @@ function ExplanationPane({
   syncState: MemorySyncState;
   uploadedSelection: string;
   uploadedName?: string;
+  chatMessages: ChatMessage[];
+  chatDraft: string;
+  chatLoading: boolean;
+  chatError: string;
+  onChatDraft: (value: string) => void;
+  onAskTutor: () => void;
   note: string;
   onNote: (note: string) => void;
   onConfirm: () => void;
@@ -570,6 +649,61 @@ function ExplanationPane({
             </motion.div>
           )}
           </AnimatePresence>
+
+          <div className="passage-chat">
+            <div className="chat-heading">
+              <span><Bot size={14} /> Ask Gloss</span>
+              <em>Butterbase AI Gateway</em>
+            </div>
+            {chatMessages.length === 0 && (
+              <div className="chat-suggestions">
+                {["Explain this more simply", "Why does this matter?", "What does the passage not tell us?"].map((suggestion) => (
+                  <button key={suggestion} onClick={() => onChatDraft(suggestion)}>{suggestion}</button>
+                ))}
+              </div>
+            )}
+            <AnimatePresence initial={false}>
+              {chatMessages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  className={`chat-message ${message.role}`}
+                  initial={{ opacity: 0, y: 7, scale: .98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                >
+                  <span>{message.role === "assistant" ? <Sparkles size={12} /> : "You"}</span>
+                  <p>{message.content}</p>
+                  {message.provider && <small>{message.provider} · {message.model}</small>}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {chatLoading && (
+              <motion.div className="chat-message assistant loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <span><Sparkles size={12} /></span><p><i /><i /><i /></p>
+              </motion.div>
+            )}
+            {chatError && <div className="chat-error">{chatError}</div>}
+            <form
+              className="chat-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onAskTutor();
+              }}
+            >
+              <input
+                value={chatDraft}
+                onChange={(event) => onChatDraft(event.target.value)}
+                placeholder="Ask about this passage…"
+                maxLength={2000}
+                disabled={chatLoading}
+              />
+              <motion.button
+                type="submit"
+                aria-label="Ask Gloss"
+                disabled={!chatDraft.trim() || chatLoading}
+                whileTap={{ scale: .92 }}
+              ><Send size={14} /></motion.button>
+            </form>
+          </div>
 
           <textarea
             className="note-input"

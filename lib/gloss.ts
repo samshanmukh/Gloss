@@ -23,6 +23,14 @@ export type RetrievedLearnerMemory = {
   evidence: string[];
 };
 
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  provider?: string;
+  model?: string;
+};
+
 export const PAPER_META = {
   cortical: {
     shortTitle: "Paper 1",
@@ -96,6 +104,48 @@ export const memoryAdapter = {
     const result = (await response.json()) as { available: boolean; status?: string; error?: string };
     if (!response.ok) throw new Error(result.error || "EverOS write failed");
     return result;
+  },
+};
+
+export const chatAdapter = {
+  async send({
+    passage,
+    paperTitle,
+    question,
+    history,
+  }: {
+    passage: string;
+    paperTitle: string;
+    question: string;
+    history: ChatMessage[];
+  }) {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        learnerId: "sam",
+        passage,
+        paperTitle,
+        question,
+        history: history.map(({ role, content }) => ({ role, content })),
+      }),
+    });
+    const result = (await response.json()) as {
+      answer?: string;
+      provider?: string;
+      model?: string;
+      error?: string;
+      memory?: { retrieved: boolean; evidenceCount: number; saved: boolean };
+    };
+    if (!response.ok || !result.answer || !result.provider || !result.model) {
+      throw new Error(result.error || "The tutor could not respond");
+    }
+    return {
+      answer: result.answer,
+      provider: result.provider,
+      model: result.model,
+      memory: result.memory,
+    };
   },
 };
 

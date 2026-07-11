@@ -295,6 +295,50 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .memory-card strong { font-size: 10px; }
 .memory-card p { margin: 3px 0; font-size: 8px; color: #828396; }
 .memory-card button, .connection-card button { border: 0; padding: 0; background: transparent; color: var(--purple); font-size: 8px; cursor: pointer; }
+.passage-chat {
+  margin-top: 18px; padding-top: 15px; border-top: 1px solid #ececf2;
+}
+.chat-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.chat-heading > span { display: flex; align-items: center; gap: 6px; color: #353548; font-size: 10px; font-weight: 700; }
+.chat-heading > span svg { color: var(--purple); }
+.chat-heading em {
+  padding: 4px 6px; border: 1px solid #ddd7f6; border-radius: 10px; color: #6b55bf;
+  background: #f8f6ff; font-size: 6px; font-style: normal; letter-spacing: .2px;
+}
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+.chat-suggestions button {
+  border: 1px solid #e3e1ed; border-radius: 12px; padding: 5px 7px; color: #747589;
+  background: #fff; font-size: 7px; cursor: pointer;
+}
+.chat-suggestions button:hover { color: var(--purple); border-color: #cfc5f2; background: #faf8ff; }
+.chat-message { max-width: 92%; margin: 8px 0; }
+.chat-message > span { display: flex; align-items: center; min-height: 15px; color: #838496; font-size: 7px; font-weight: 700; }
+.chat-message p {
+  margin: 3px 0 0; padding: 9px 10px; border-radius: 4px 10px 10px 10px; color: #3c3c50;
+  background: #f1f1f6; font-size: 9px; line-height: 1.55; white-space: pre-wrap;
+}
+.chat-message.user { margin-left: auto; }
+.chat-message.user > span { justify-content: flex-end; }
+.chat-message.user p { color: white; background: linear-gradient(135deg, #7658e8, #6040d2); border-radius: 10px 4px 10px 10px; box-shadow: 0 5px 14px #6d4be826; }
+.chat-message.assistant > span { color: var(--purple); }
+.chat-message small { display: block; margin: 4px 2px 0; color: #a0a1af; font-size: 6px; }
+.chat-message.loading p { display: flex; align-items: center; gap: 4px; width: fit-content; padding: 10px 13px; }
+.chat-message.loading i { width: 4px; height: 4px; border-radius: 50%; background: #8d7acb; animation: chat-dot 1s ease-in-out infinite; }
+.chat-message.loading i:nth-child(2) { animation-delay: .14s; }
+.chat-message.loading i:nth-child(3) { animation-delay: .28s; }
+.chat-error { margin: 8px 0; padding: 8px 9px; border-radius: 7px; color: #aa4451; background: #fff2f3; font-size: 8px; line-height: 1.4; }
+.chat-composer {
+  display: flex; align-items: center; gap: 7px; margin-top: 10px; padding: 5px 5px 5px 10px;
+  border: 1px solid #dedee8; border-radius: 9px; background: white; box-shadow: 0 5px 18px #24233b0a;
+}
+.chat-composer:focus-within { border-color: #a996ee; box-shadow: 0 0 0 3px #6d4be810; }
+.chat-composer input { min-width: 0; flex: 1; border: 0; outline: 0; color: #353548; background: transparent; font-size: 9px; }
+.chat-composer input::placeholder { color: #a4a5b3; }
+.chat-composer button {
+  width: 29px; height: 29px; display: grid; place-items: center; flex: 0 0 auto; border: 0; border-radius: 7px;
+  color: white; background: linear-gradient(135deg, #7a5bea, #5d3bcf); cursor: pointer; box-shadow: 0 4px 11px #6d4be833;
+}
+.chat-composer button:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
 .note-input {
   display: block; width: 100%; resize: none; margin-top: 16px; height: 54px; padding: 10px; border: 1px solid #e4e4ed;
   border-radius: 7px; outline: 0; background: white; color: #414155; font-size: 9px;
@@ -391,6 +435,7 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 @keyframes node-arrive { from { opacity: 0; scale: .4; } 60% { scale: 1.12; } to { opacity: 1; scale: 1; } }
 @keyframes memory-pulse { 50% { opacity: .4; transform: scale(.75); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes chat-dot { 50% { opacity: .35; transform: translateY(-2px); } }
 
 @media (max-width: 1180px) {
   .sidebar { width: 196px; flex-basis: 196px; }
