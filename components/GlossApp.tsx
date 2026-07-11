@@ -21,6 +21,8 @@ import {
   Menu,
   Minus,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRight,
   Plus,
   RotateCcw,
@@ -113,6 +115,7 @@ export default function GlossApp() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [readingSeconds, setReadingSeconds] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const graphPaneRef = useRef<HTMLElement>(null);
   const learnerId = learner?.id ?? DEFAULT_LEARNER.id;
 
@@ -387,6 +390,8 @@ export default function GlossApp() {
         onReset={resetDemo}
         confirmed={confirmed}
         syncState={syncState}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
       />
 
       <section className="workspace">
@@ -491,6 +496,8 @@ function Sidebar({
   onReset,
   confirmed,
   syncState,
+  collapsed,
+  onToggle,
 }: {
   source: SourceId;
   pdfName: string | null;
@@ -501,6 +508,8 @@ function Sidebar({
   onReset: () => void;
   confirmed: boolean;
   syncState: MemorySyncState;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const syncMessage = {
@@ -512,10 +521,18 @@ function Sidebar({
   }[syncState];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={{ width: collapsed ? 72 : undefined, flexBasis: collapsed ? 72 : undefined }}>
       <div className="brand">
         <div className="brand-mark"><Sparkles size={16} /></div>
-        <div><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        <div className="brand-copy"><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        <button
+          className="sidebar-toggle"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggle}
+        >
+          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+        </button>
       </div>
       <nav className="primary-nav" aria-label="Primary navigation">
         <button className="active"><Library size={17} /> Library</button>
