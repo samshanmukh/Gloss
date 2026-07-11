@@ -319,6 +319,40 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
   border-radius: 7px; outline: 0; background: white; color: #414155; font-size: 9px;
 }
 .note-input:focus { border-color: #ac9aef; box-shadow: 0 0 0 3px #6d4be812; }
+.note-compose-inline { position: relative; }
+.note-compose-inline .note-input { padding-right: 42px; }
+.note-compose-inline > button {
+  position: absolute; right: 7px; bottom: 7px; width: 29px; height: 29px; display: grid; place-items: center;
+  border: 0; border-radius: 7px; color: white; background: var(--purple); cursor: pointer;
+}
+.note-compose-inline > button:disabled { opacity: .4; cursor: default; }
+.notes-panel { padding: 14px; }
+.notes-composer { display: grid; gap: 8px; padding: 12px; border: 1px solid #e3def7; border-radius: 10px; background: #faf9ff; }
+.notes-composer textarea, .saved-note textarea {
+  width: 100%; min-height: 76px; resize: vertical; padding: 10px; border: 1px solid #deddeb; border-radius: 8px;
+  outline: 0; background: white; color: #33344a; font-size: 10px; line-height: 1.55;
+}
+.notes-composer textarea:focus, .saved-note textarea:focus { border-color: #ac9aef; box-shadow: 0 0 0 3px #6d4be812; }
+.notes-composer > button {
+  justify-self: end; display: flex; align-items: center; gap: 6px; padding: 8px 11px; border: 0; border-radius: 7px;
+  color: white; background: var(--purple); font-size: 9px; cursor: pointer;
+}
+.notes-composer > button:disabled { opacity: .45; cursor: default; }
+.notes-list { display: grid; gap: 9px; margin-top: 12px; }
+.saved-note { padding: 12px; border: 1px solid #e7e7f0; border-radius: 10px; background: white; box-shadow: 0 4px 14px #26254b08; }
+.saved-note > p { margin: 0; color: #34354a; font-size: 10.5px; line-height: 1.6; white-space: pre-wrap; }
+.saved-note footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; color: #8d8ea0; font-size: 7.5px; }
+.note-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 9px; }
+.note-actions button {
+  display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: white; color: #696a80; font-size: 8px; cursor: pointer;
+}
+.note-actions button.primary { color: white; border-color: var(--purple); background: var(--purple); }
+.note-actions button.danger { color: #a3543a; }
+.notes-empty { display: grid; justify-items: center; gap: 7px; padding: 48px 20px; text-align: center; color: #8a8b9e; }
+.notes-empty svg { color: var(--purple); }
+.notes-empty strong { color: #444559; font-size: 11px; }
+.notes-empty p { max-width: 230px; margin: 0; font-size: 9px; line-height: 1.55; }
 .explanation-footer {
   display: flex; align-items: center; gap: 7px; margin-top: 12px; color: #9293a3; font-size: 8px;
 }
@@ -332,7 +366,9 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .graph-header { height: 48px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .graph-header > div { display: flex; align-items: center; gap: 7px; font-size: 11px; }
 .graph-header > div svg { color: var(--purple); }
-.graph-header > svg { color: #a0a1b1; }
+.graph-header > button { display: grid; place-items: center; border: 0; background: transparent; color: #a0a1b1; cursor: pointer; }
+.graph-header > button:hover { color: var(--purple); }
+.graph-help { margin: 9px 0; padding: 9px 10px; border: 1px solid #e3def7; border-radius: 8px; background: #faf9ff; color: #696a80; font-size: 8px; line-height: 1.5; }
 .graph-tabs { display: flex; justify-content: center; height: 40px; border-bottom: 1px solid var(--line); }
 .graph-tabs button { border: 0; background: transparent; padding: 0 18px; color: #87889a; font-size: 9px; cursor: pointer; }
 .graph-tabs button.active { color: var(--purple); border-bottom: 2px solid var(--purple); }
@@ -340,6 +376,7 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .graph-legend span { display: flex; align-items: center; gap: 4px; }
 .graph-legend i { width: 7px; height: 7px; border-radius: 50%; background: #77b9fb; }
 .graph-legend i.paper-two { background: #9b7af2; }
+.graph-legend i.note { background: #e8a35b; }
 .graph-legend i.mastered { background: #4abb7d; }
 .graph-content { min-height: 100%; }
 .knowledge-canvas {
@@ -353,10 +390,14 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 }
 .concept-node circle { fill: #f6fbff; stroke: #6baaf0; stroke-width: 1.2; }
 .concept-node.td circle { fill: #faf7ff; stroke: #9875e8; }
+.concept-node.note circle { fill: #fff8ee; stroke: #e8a35b; }
 .concept-node.open circle { stroke-dasharray: 3 3; opacity: .7; }
 .concept-node.learning circle { filter: drop-shadow(0 5px 10px #7859ed2d); }
+.concept-node { cursor: pointer; outline: none; }
+.concept-node:hover circle, .concept-node.selected circle { stroke-width: 2.8; filter: drop-shadow(0 4px 8px #6d4be833); }
 .concept-node text { fill: #475068; font: 8px "DM Sans", sans-serif; pointer-events: none; }
 .concept-node.td text { fill: #6549a8; }
+.concept-node.note text { fill: #925d29; }
 .concept-node .check-dot { fill: #3eb375; stroke: white; stroke-width: 2; }
 .concept-node path { fill: none; stroke: white; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .concept-node.arrive { transform-box: fill-box; transform-origin: center; animation: node-arrive .65s cubic-bezier(.2,.8,.2,1) both; }
@@ -367,6 +408,13 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .connection-icon { flex: 0 0 auto; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--purple); background: #ebe5ff; }
 .connection-card strong { font-size: 9px; color: var(--purple-dark); }
 .connection-card p { margin: 4px 0 6px; color: #77768a; font-size: 8px; line-height: 1.45; }
+.node-inspector { position: relative; margin: 0 0 10px; padding: 12px; border: 1px solid #ddd7f4; border-radius: 9px; background: white; box-shadow: 0 8px 22px #26254b10; }
+.node-inspector .eyebrow { display: block; margin: 0 0 5px; }
+.node-inspector > strong { display: block; color: #303145; font-size: 10.5px; }
+.node-inspector > p { margin: 5px 0; color: #67687c; font-size: 8.5px; line-height: 1.55; }
+.node-inspector > small { display: block; margin-bottom: 8px; color: #999aac; font-size: 7.5px; }
+.inspector-close { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; border: 0; background: transparent; color: #9a9bac; cursor: pointer; }
+.relation-chip { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; border: 0; border-radius: 6px; text-align: left; color: var(--purple-dark); background: var(--purple-soft); font-size: 7.5px; cursor: pointer; }
 .graph-hint { align-items: center; color: #77768a; font-size: 8px; line-height: 1.5; background: #fafafd; border-color: #e9e9f0; }
 .graph-hint svg { color: var(--purple); flex: 0 0 auto; }
 .pop-in { animation: rise-in .5s .3s ease both; }
@@ -571,8 +619,10 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
   box-shadow: 0 4px 12px #26254b0d;
 }
 .minimap svg { display: block; width: 100%; height: auto; }
+.minimap svg[role="button"] { cursor: crosshair; }
 .mini-node { fill: #bcd8f7; }
 .mini-node.td { fill: #d3c3f6; }
+.mini-node.note { fill: #efbd89; }
 .mini-node.mastered { fill: #7fd3a7; }
 .mini-viewport { fill: #6d4be80f; stroke: var(--purple); stroke-width: 3; }
 .zoom-buttons { display: grid; gap: 4px; }
@@ -585,13 +635,15 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .concept-list { padding: 14px 4px; display: grid; gap: 5px; }
 .concept-row {
   display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid #ececf3; border-radius: 8px;
-  background: #fdfdff; color: #77788b;
+  width: 100%; background: #fdfdff; color: #77788b; text-align: left; cursor: pointer;
 }
+.concept-row:hover { border-color: #d8cff6; background: #faf8ff; }
 .concept-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; color: #33344a; font-weight: 600; }
 .concept-paper { padding: 3px 6px; border-radius: 5px; font-size: 7px; font-weight: 700; }
 .concept-paper.cortical { color: #397dbd; background: #ecf5fd; }
 .concept-paper.td { color: #7854cc; background: #f4eeff; }
 .concept-paper.pdf { color: #a3543a; background: #fdf1ea; }
+.concept-paper.note { color: #925d29; background: #fff1df; }
 .concept-status { min-width: 52px; text-align: center; padding: 3px 6px; border-radius: 5px; font-size: 7px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
 .concept-status.mastered { color: #23764e; background: #e8f8ef; }
 .concept-status.learning { color: #6d4be8; background: #f0ecff; }

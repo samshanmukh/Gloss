@@ -148,3 +148,55 @@ export async function recordTutorExchange({
     ],
   });
 }
+
+export async function recordReadingNote({
+  learnerId,
+  operation,
+  note,
+}: {
+  learnerId: string;
+  operation: "upsert" | "delete";
+  note: {
+    id: string;
+    content: string;
+    sourceTitle: string;
+    passage?: string;
+    page?: number;
+    createdAt: number;
+    updatedAt: number;
+  };
+}) {
+  const timestamp = Date.now();
+  const sessionId = `gloss_notes_${learnerId}`;
+  const payload = {
+    type: "gloss_reading_note",
+    operation,
+    ...note,
+  };
+
+  await request<EverOSResponse<unknown>>("/memories", {
+    user_id: learnerId,
+    session_id: sessionId,
+    async_mode: false,
+    messages: [
+      {
+        role: "user",
+        timestamp,
+        content:
+          operation === "delete"
+            ? `I deleted my Gloss reading note "${note.id}" from ${note.sourceTitle}.`
+            : `I wrote a reading note in Gloss about ${note.sourceTitle}: ${note.content}`,
+      },
+      {
+        role: "assistant",
+        timestamp: timestamp + 1,
+        content: `[GLOSS_NOTE]${JSON.stringify(payload)}`,
+      },
+    ],
+  });
+
+  await request<EverOSResponse<{ status: string }>>("/memories/flush", {
+    user_id: learnerId,
+    session_id: sessionId,
+  });
+}

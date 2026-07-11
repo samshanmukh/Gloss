@@ -47,6 +47,42 @@ export type AppNotification = {
 
 export type FeedbackValue = "up" | "down";
 
+export type ReadingNote = {
+  id: string;
+  learnerId: string;
+  content: string;
+  sourceId: SourceId;
+  sourceTitle: string;
+  passage?: string;
+  page?: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type KnowledgeNode = {
+  id: string;
+  label: string;
+  summary: string;
+  sourceTitle: string;
+  sourceType: "paper" | "note";
+  status: "mastered" | "learning" | "open";
+  x: number;
+  y: number;
+};
+
+export type KnowledgeEdge = {
+  id: string;
+  from: string;
+  to: string;
+  relation: string;
+  sourceNoteId?: string;
+};
+
+export type KnowledgeGraph = {
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+};
+
 export const DEFAULT_LEARNER: Learner = { id: "sam", name: "Sam" };
 
 export const READING_GOAL_HOURS = 3;
@@ -184,6 +220,48 @@ export const feedbackStore = {
   },
   write(learnerId: string, feedback: Record<string, FeedbackValue>) {
     writeJSON(storageKey("feedback", learnerId), feedback);
+  },
+};
+
+/* ── notes + AI-derived knowledge graph ─────────────────────────── */
+
+export const noteStore = {
+  read(learnerId: string): ReadingNote[] {
+    return readJSON(storageKey("notes", learnerId), []);
+  },
+  write(learnerId: string, notes: ReadingNote[]) {
+    writeJSON(storageKey("notes", learnerId), notes);
+  },
+  async sync(note: ReadingNote, operation: "upsert" | "delete") {
+    const response = await fetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "sync", operation, note }),
+    });
+    const result = (await response.json()) as { error?: string };
+    if (!response.ok) throw new Error(result.error || "EverOS note sync failed");
+  },
+};
+
+export const graphStore = {
+  read(learnerId: string): KnowledgeGraph {
+    return readJSON(storageKey("graph", learnerId), { nodes: [], edges: [] });
+  },
+  write(learnerId: string, graph: KnowledgeGraph) {
+    writeJSON(storageKey("graph", learnerId), graph);
+  },
+  async extract(note: ReadingNote, existingNodes: KnowledgeNode[]): Promise<KnowledgeGraph> {
+    const response = await fetch("/api/graph", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        note,
+        existingNodes: existingNodes.map(({ id, label, summary }) => ({ id, label, summary })),
+      }),
+    });
+    const result = (await response.json()) as KnowledgeGraph & { error?: string };
+    if (!response.ok) throw new Error(result.error || "Knowledge extraction failed");
+    return { nodes: result.nodes ?? [], edges: result.edges ?? [] };
   },
 };
 

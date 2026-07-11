@@ -17,6 +17,7 @@ import {
   Library,
   Link2,
   ListTree,
+  Loader2,
   LogOut,
   Menu,
   Minus,
@@ -27,10 +28,12 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Save,
   Sparkles,
   StickyNote,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -42,18 +45,23 @@ import {
   BASE_CONCEPTS,
   DEFAULT_LEARNER,
   FeedbackValue,
+  KnowledgeEdge,
+  KnowledgeGraph,
   Learner,
   MemorySyncState,
   PAPER_META,
   PaperId,
   QAEntry,
   READING_GOAL_HOURS,
+  ReadingNote,
   SourceId,
   feedbackStore,
   formatHours,
+  graphStore,
   initialMemory,
   learnerStore,
   memoryAdapter,
+  noteStore,
   readingTimeStore,
 } from "@/lib/gloss";
 
@@ -107,6 +115,9 @@ export default function GlossApp() {
   const [graphTab, setGraphTab] = useState<GraphTab>("graph");
   const [showGraph, setShowGraph] = useState(false);
   const [note, setNote] = useState("");
+  const [notes, setNotes] = useState<ReadingNote[]>([]);
+  const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph>({ nodes: [], edges: [] });
+  const [noteSyncing, setNoteSyncing] = useState(false);
   const [noteFocusTick, setNoteFocusTick] = useState(0);
   const [syncState, setSyncState] = useState<MemorySyncState>("checking");
   const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
@@ -141,6 +152,8 @@ export default function GlossApp() {
     setMemory(stored);
     setConfirmed(stored.mastered.includes("reward_signal"));
     setFeedback(feedbackStore.read(active.id));
+    setNotes(noteStore.read(active.id));
+    setKnowledgeGraph(graphStore.read(active.id));
     setReadingSeconds(readingTimeStore.read(active.id));
     setSyncState("checking");
     void memoryAdapter
@@ -338,9 +351,94 @@ export default function GlossApp() {
     feedbackStore.write(learnerId, next);
   }
 
+  function currentNoteContext() {
+    if (source === "pdf") {
+      return {
+        sourceTitle: pdfFile?.name ?? "Uploaded PDF",
+        passage: pdfSelection?.text,
+        page: pdfSelection?.page,
+      };
+    }
+    return {
+      sourceTitle: PAPER_META[source].title,
+      passage: PAPER_COPY[source].selection,
+      page: 12,
+    };
+  }
+
+  async function saveNote(content: string, existingId?: string) {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    const now = Date.now();
+    const previous = existingId ? notes.find((item) => item.id === existingId) : undefined;
+    const context = currentNoteContext();
+    const saved: ReadingNote = {
+      id: previous?.id ?? nextId("note"),
+      learnerId,
+      content: trimmed,
+      sourceId: source,
+      sourceTitle: context.sourceTitle,
+      passage: context.passage,
+      page: context.page,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const nextNotes = previous
+      ? notes.map((item) => (item.id === saved.id ? saved : item))
+      : [saved, ...notes];
+    setNotes(nextNotes);
+    noteStore.write(learnerId, nextNotes);
+    setNote("");
+    setNoteSyncing(true);
+
+    try {
+      const cleanGraph: KnowledgeGraph = {
+        nodes: knowledgeGraph.nodes.filter((node) => !node.id.includes(saved.id.slice(-18))),
+        edges: knowledgeGraph.edges.filter((edge) => edge.sourceNoteId !== saved.id),
+      };
+      const [extracted] = await Promise.all([
+        graphStore.extract(saved, cleanGraph.nodes),
+        noteStore.sync(saved, "upsert"),
+      ]);
+      const merged: KnowledgeGraph = {
+        nodes: [...cleanGraph.nodes, ...extracted.nodes],
+        edges: [...cleanGraph.edges, ...extracted.edges],
+      };
+      setKnowledgeGraph(merged);
+      graphStore.write(learnerId, merged);
+      notify("Note saved and mapped", `${extracted.nodes.length} concepts added from ${saved.sourceTitle}`);
+    } catch {
+      notify("Note saved locally", "EverOS or AI extraction is temporarily unavailable");
+    } finally {
+      setNoteSyncing(false);
+    }
+  }
+
+  async function deleteNote(noteToDelete: ReadingNote) {
+    const nextNotes = notes.filter((item) => item.id !== noteToDelete.id);
+    const nextGraph: KnowledgeGraph = {
+      nodes: knowledgeGraph.nodes.filter((node) => !node.id.includes(noteToDelete.id.slice(-18))),
+      edges: knowledgeGraph.edges.filter((edge) => edge.sourceNoteId !== noteToDelete.id),
+    };
+    setNotes(nextNotes);
+    setKnowledgeGraph(nextGraph);
+    noteStore.write(learnerId, nextNotes);
+    graphStore.write(learnerId, nextGraph);
+    try {
+      await noteStore.sync(noteToDelete, "delete");
+      notify("Note deleted", `Removed from ${noteToDelete.sourceTitle}`);
+    } catch {
+      notify("Note deleted locally", "EverOS deletion marker could not be synced");
+    }
+  }
+
   function resetDemo() {
     memoryAdapter.reset(learnerId);
+    noteStore.write(learnerId, []);
+    graphStore.write(learnerId, { nodes: [], edges: [] });
     setMemory(initialMemory(learnerId));
+    setNotes([]);
+    setKnowledgeGraph({ nodes: [], edges: [] });
     setSource("cortical");
     setExplained(true);
     setConfirmed(false);
@@ -434,18 +532,24 @@ export default function GlossApp() {
             }
             syncState={syncState}
             note={note}
+            notes={notes}
+            noteSyncing={noteSyncing}
             noteFocusTick={noteFocusTick}
             qaEntries={qaEntries}
             feedback={feedback}
             onFeedback={setFeedbackValue}
             onAsk={(question) => void askQuestion(question)}
             onNote={setNote}
+            onSaveNote={(content, id) => void saveNote(content, id)}
+            onDeleteNote={(savedNote) => void deleteNote(savedNote)}
             onConfirm={() => void confirmUnderstanding()}
             onClose={() => setExplained(false)}
           />
           <GraphPane
             paneRef={graphPaneRef}
             concepts={concepts}
+            dynamicGraph={knowledgeGraph}
+            notes={notes}
             mastered={memory.mastered}
             activeTab={graphTab}
             onTab={setGraphTab}
@@ -815,12 +919,16 @@ function ExplanationPane({
   confirmed,
   syncState,
   note,
+  notes,
+  noteSyncing,
   noteFocusTick,
   qaEntries,
   feedback,
   onFeedback,
   onAsk,
   onNote,
+  onSaveNote,
+  onDeleteNote,
   onConfirm,
   onClose,
 }: {
@@ -831,23 +939,35 @@ function ExplanationPane({
   confirmed: boolean;
   syncState: MemorySyncState;
   note: string;
+  notes: ReadingNote[];
+  noteSyncing: boolean;
   noteFocusTick: number;
   qaEntries: QAEntry[];
   feedback: Record<string, FeedbackValue>;
   onFeedback: (key: string, value: FeedbackValue) => void;
   onAsk: (question: string) => void;
   onNote: (note: string) => void;
+  onSaveNote: (content: string, id?: string) => void;
+  onDeleteNote: (note: ReadingNote) => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const [activePanel, setActivePanel] = useState<"explain" | "notes">("explain");
   const [question, setQuestion] = useState("");
+  const [editingNote, setEditingNote] = useState<ReadingNote | null>(null);
+  const [editContent, setEditContent] = useState("");
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const isPdf = source === "pdf";
   const pending = qaEntries.some((entry) => entry.pending);
 
   useEffect(() => {
-    if (noteFocusTick > 0) noteRef.current?.focus();
+    if (noteFocusTick > 0) {
+      window.setTimeout(() => {
+        setActivePanel("explain");
+        noteRef.current?.focus();
+      }, 0);
+    }
   }, [noteFocusTick]);
 
   useEffect(() => {
@@ -865,8 +985,66 @@ function ExplanationPane({
 
   return (
     <section className="explanation-pane">
-      <div className="panel-tabs"><button className="active">Explain</button><button>Notes (2)</button><span /><button onClick={onClose} aria-label="Close panel"><X size={16} /></button></div>
-      {showEmpty ? (
+      <div className="panel-tabs">
+        <button className={activePanel === "explain" ? "active" : ""} onClick={() => setActivePanel("explain")}>Explain</button>
+        <button className={activePanel === "notes" ? "active" : ""} onClick={() => setActivePanel("notes")}>Notes ({notes.length})</button>
+        <span />
+        <button onClick={onClose} aria-label="Close panel"><X size={16} /></button>
+      </div>
+      {activePanel === "notes" ? (
+        <div className="notes-panel">
+          <div className="notes-composer">
+            <textarea
+              aria-label="Write a new note"
+              placeholder="Write a note about what you are reading…"
+              value={note}
+              onChange={(event) => onNote(event.target.value)}
+            />
+            <button disabled={!note.trim() || noteSyncing} onClick={() => onSaveNote(note)}>
+              {noteSyncing ? <Loader2 className="spin" size={13} /> : <Save size={13} />}
+              Save note
+            </button>
+          </div>
+          {notes.length === 0 ? (
+            <div className="notes-empty"><StickyNote size={22} /><strong>No notes yet</strong><p>Save a thought and Gloss will sync it to EverOS and map its concepts.</p></div>
+          ) : (
+            <div className="notes-list">
+              {notes.map((savedNote) => (
+                <article className="saved-note" key={savedNote.id}>
+                  {editingNote?.id === savedNote.id ? (
+                    <>
+                      <textarea value={editContent} onChange={(event) => setEditContent(event.target.value)} />
+                      <div className="note-actions">
+                        <button onClick={() => setEditingNote(null)}>Cancel</button>
+                        <button
+                          className="primary"
+                          disabled={!editContent.trim() || noteSyncing}
+                          onClick={() => {
+                            onSaveNote(editContent, savedNote.id);
+                            setEditingNote(null);
+                          }}
+                        ><Save size={12} /> Save</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p>{savedNote.content}</p>
+                      <footer>
+                        <span>{savedNote.sourceTitle}{savedNote.page ? ` · p. ${savedNote.page}` : ""}</span>
+                        <time>{new Date(savedNote.updatedAt).toLocaleDateString()}</time>
+                      </footer>
+                      <div className="note-actions">
+                        <button onClick={() => { setEditingNote(savedNote); setEditContent(savedNote.content); }}>Edit</button>
+                        <button className="danger" onClick={() => onDeleteNote(savedNote)}><Trash2 size={12} /> Delete</button>
+                      </div>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : showEmpty ? (
         <div className="empty-explanation">
           <div><Highlighter size={24} /></div>
           <h2>Select something you want to understand</h2>
@@ -942,14 +1120,19 @@ function ExplanationPane({
             </button>
           </div>
 
-          <textarea
-            ref={noteRef}
-            className="note-input"
-            aria-label="Add a note"
-            placeholder="Add a note in your own words…"
-            value={note}
-            onChange={(event) => onNote(event.target.value)}
-          />
+          <div className="note-compose-inline">
+            <textarea
+              ref={noteRef}
+              className="note-input"
+              aria-label="Add a note"
+              placeholder="Add a note in your own words…"
+              value={note}
+              onChange={(event) => onNote(event.target.value)}
+            />
+            <button aria-label="Save note" disabled={!note.trim() || noteSyncing} onClick={() => onSaveNote(note)}>
+              {noteSyncing ? <Loader2 className="spin" size={14} /> : <Save size={14} />}
+            </button>
+          </div>
           <div className="explanation-footer">
             <span>{confirmed
               ? syncState === "offline" ? "Saved on this device" : "Saved to your understanding"
@@ -967,11 +1150,13 @@ function ExplanationPane({
 
 /* ── knowledge graph pane ────────────────────────────────────────── */
 
-const GRAPH_VIEW = { width: 380, height: 275 };
+const GRAPH_WIDTH = 380;
 
 function GraphPane({
   paneRef,
   concepts,
+  dynamicGraph,
+  notes,
   mastered,
   activeTab,
   onTab,
@@ -979,14 +1164,52 @@ function GraphPane({
 }: {
   paneRef: React.RefObject<HTMLElement | null>;
   concepts: typeof BASE_CONCEPTS;
+  dynamicGraph: KnowledgeGraph;
+  notes: ReadingNote[];
   mastered: string[];
   activeTab: GraphTab;
   onTab: (tab: GraphTab) => void;
   crossPaper: boolean;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const [viewportRect, setViewportRect] = useState({ x: 0, y: 0, w: 1, h: 1 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const baseNodes = concepts.map((concept) => ({
+    ...concept,
+    label: concept.label.replace("\n", " "),
+    summary: {
+      sensor: "Information returned from the environment after an action.",
+      "closed-loop": "A cycle where actions change the environment and feedback shapes the next action.",
+      action: "The possible choices available to an agent.",
+      reward: "A scalar value indicating how well the latest action performed.",
+      prediction: "An estimate of future reward or value.",
+      "td-error": "The gap between expected and observed outcomes.",
+      update: "The rule that adjusts estimates using the TD error.",
+    }[concept.id] ?? "A concept in your reading.",
+    sourceTitle: PAPER_META[concept.paper].title,
+    sourceType: "paper" as const,
+  }));
+  const dynamicNodes = dynamicGraph.nodes.map((node, index) => ({
+    ...node,
+    x: 70 + (index % 3) * 120,
+    y: 300 + Math.floor(index / 3) * 95,
+    paper: "note" as const,
+  }));
+  const allNodes = [...baseNodes, ...dynamicNodes];
+  const graphHeight = Math.max(275, 375 + Math.max(0, Math.ceil(dynamicNodes.length / 3) - 1) * 95);
+  const baseEdges: KnowledgeEdge[] = [
+    { id: "base-1", from: "sensor", to: "closed-loop", relation: "provides feedback to" },
+    { id: "base-2", from: "closed-loop", to: "action", relation: "selects from" },
+    { id: "base-3", from: "closed-loop", to: "reward", relation: "uses" },
+    { id: "base-4", from: "prediction", to: "td-error", relation: "is compared by" },
+    { id: "base-5", from: "td-error", to: "update", relation: "drives" },
+    ...(crossPaper ? [{ id: "cross-paper", from: "reward", to: "td-error", relation: "grounds understanding of" }] : []),
+  ];
+  const allEdges = [...baseEdges, ...dynamicGraph.edges];
+  const selectedNode = allNodes.find((node) => node.id === selectedId);
+  const selectedEdges = allEdges.filter((edge) => edge.from === selectedId || edge.to === selectedId);
 
   const updateViewport = useCallback(() => {
     const el = scrollRef.current;
@@ -1005,9 +1228,26 @@ function GraphPane({
     updateViewport();
   }, [zoom, activeTab, updateViewport]);
 
+  function navigateMinimap(event: React.MouseEvent<SVGSVGElement>) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    el.scrollTo({
+      left: Math.max(0, x * el.scrollWidth - el.clientWidth / 2),
+      top: Math.max(0, y * el.scrollHeight - el.clientHeight / 2),
+      behavior: "smooth",
+    });
+  }
+
   return (
     <aside className="graph-pane" ref={paneRef}>
-      <div className="graph-header"><div><Network size={16} /><strong>Your knowledge</strong></div><CircleHelp size={15} /></div>
+      <div className="graph-header">
+        <div><Network size={16} /><strong>Your knowledge</strong></div>
+        <button aria-label="About the knowledge graph" onClick={() => setShowHelp((value) => !value)}><CircleHelp size={15} /></button>
+      </div>
+      {showHelp && <div className="graph-help pop-in">Notes are synced to EverOS, then Butterbase AI extracts grounded concepts and relationships. Click any node to inspect its source.</div>}
       <div className="graph-tabs">
         <button className={activeTab === "graph" ? "active" : ""} onClick={() => onTab("graph")}>Graph</button>
         <button className={activeTab === "timeline" ? "active" : ""} onClick={() => onTab("timeline")}>Timeline</button>
@@ -1017,11 +1257,11 @@ function GraphPane({
       {activeTab === "graph" && (
         <>
           <div className="graph-legend">
-            <span><i className="paper-one" /> Paper 1</span><span><i className="paper-two" /> Paper 2</span><span><i className="mastered" /> Mastered</span>
+            <span><i className="paper-one" /> Paper 1</span><span><i className="paper-two" /> Paper 2</span><span><i className="note" /> Notes</span><span><i className="mastered" /> Mastered</span>
           </div>
           <div className="knowledge-canvas zoomable" ref={scrollRef} onScroll={updateViewport}>
             <svg
-              viewBox={`0 0 ${GRAPH_VIEW.width} ${GRAPH_VIEW.height}`}
+              viewBox={`0 0 ${GRAPH_WIDTH} ${graphHeight}`}
               style={{ width: `${zoom * 100}%`, minWidth: "100%" }}
               role="img"
               aria-label="Knowledge graph connecting concepts from two papers"
@@ -1032,18 +1272,25 @@ function GraphPane({
                 </marker>
                 <linearGradient id="cross" x1="0" x2="1"><stop stopColor="#47a7ff" /><stop offset="1" stopColor="#8a5cf5" /></linearGradient>
               </defs>
-              {[
-                [68, 72, 146, 118], [146, 118, 58, 176], [146, 118, 175, 54],
-                [276, 83, 323, 154], [323, 154, 251, 213],
-              ].map((line, index) => (
-                <line key={index} x1={line[0]} y1={line[1]} x2={line[2]} y2={line[3]} className="graph-line" markerEnd="url(#arrow)" />
-              ))}
-              {crossPaper && <line x1="175" y1="54" x2="323" y2="154" className="cross-line" markerEnd="url(#arrow)" />}
-              {concepts.map((concept) => (
-                <g key={concept.id} className={`concept-node ${concept.paper} ${concept.status} ${concept.id === "td-error" && crossPaper ? "arrive" : ""}`} transform={`translate(${concept.x} ${concept.y})`}>
+              {allEdges.map((edge) => {
+                const from = allNodes.find((node) => node.id === edge.from);
+                const to = allNodes.find((node) => node.id === edge.to);
+                if (!from || !to) return null;
+                return <line key={edge.id} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={edge.id === "cross-paper" ? "cross-line" : "graph-line"} markerEnd="url(#arrow)" />;
+              })}
+              {allNodes.map((concept) => (
+                <g
+                  key={concept.id}
+                  className={`concept-node ${"paper" in concept ? concept.paper : "note"} ${concept.status} ${concept.id === "td-error" && crossPaper ? "arrive" : ""} ${selectedId === concept.id ? "selected" : ""}`}
+                  transform={`translate(${concept.x} ${concept.y})`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(concept.id)}
+                  onKeyDown={(event) => event.key === "Enter" && setSelectedId(concept.id)}
+                >
                   <circle r={concept.id === "td-error" || concept.id === "closed-loop" ? 35 : 29} />
                   <text textAnchor="middle">
-                    {concept.label.split("\n").map((line, i) => <tspan x="0" dy={i === 0 ? "-2" : "13"} key={line}>{line}</tspan>)}
+                    {concept.label.match(/.{1,14}(?:\s|$)/g)?.slice(0, 3).map((line, i) => <tspan x="0" dy={i === 0 ? "-2" : "13"} key={line}>{line.trim()}</tspan>)}
                   </text>
                   {concept.status === "mastered" && <g transform="translate(21 -22)"><circle className="check-dot" r="8" /><path d="M-3 0 l2 2 4 -5" /></g>}
                 </g>
@@ -1052,23 +1299,23 @@ function GraphPane({
           </div>
 
           <div className="graph-controls">
-            <div className="minimap" aria-hidden>
-              <svg viewBox={`0 0 ${GRAPH_VIEW.width} ${GRAPH_VIEW.height}`}>
-                {concepts.map((concept) => (
+            <div className="minimap">
+              <svg viewBox={`0 0 ${GRAPH_WIDTH} ${graphHeight}`} onClick={navigateMinimap} role="button" aria-label="Navigate knowledge graph">
+                {allNodes.map((concept) => (
                   <circle
                     key={concept.id}
                     cx={concept.x}
                     cy={concept.y}
                     r="11"
-                    className={`mini-node ${concept.paper} ${concept.status}`}
+                    className={`mini-node ${"paper" in concept ? concept.paper : "note"} ${concept.status}`}
                   />
                 ))}
                 <rect
                   className="mini-viewport"
-                  x={viewportRect.x * GRAPH_VIEW.width}
-                  y={viewportRect.y * GRAPH_VIEW.height}
-                  width={viewportRect.w * GRAPH_VIEW.width}
-                  height={viewportRect.h * GRAPH_VIEW.height}
+                  x={viewportRect.x * GRAPH_WIDTH}
+                  y={viewportRect.y * graphHeight}
+                  width={viewportRect.w * GRAPH_WIDTH}
+                  height={viewportRect.h * graphHeight}
                   rx="4"
                 />
               </svg>
@@ -1079,11 +1326,28 @@ function GraphPane({
             </div>
           </div>
 
+          {selectedNode && (
+            <div className="node-inspector pop-in">
+              <button className="inspector-close" onClick={() => setSelectedId(null)} aria-label="Close concept details"><X size={13} /></button>
+              <span className="eyebrow">{"sourceType" in selectedNode && selectedNode.sourceType === "note" ? "From your note" : "From paper"}</span>
+              <strong>{selectedNode.label}</strong>
+              <p>{selectedNode.summary}</p>
+              <small>{selectedNode.sourceTitle}</small>
+              {selectedEdges.map((edge) => {
+                const otherId = edge.from === selectedNode.id ? edge.to : edge.from;
+                const other = allNodes.find((node) => node.id === otherId);
+                return <button className="relation-chip" key={edge.id} onClick={() => setSelectedId(otherId)}>{edge.relation} → {other?.label ?? otherId}</button>;
+              })}
+            </div>
+          )}
+
           {crossPaper ? (
             <div className="connection-card pop-in">
               <div className="connection-icon"><Link2 size={16} /></div>
-              <div><strong>Cross-paper connection</strong><p>Reward signal shaped your explanation of TD error.</p><button>Explore connection →</button></div>
+              <div><strong>Cross-paper connection</strong><p>Reward signal shaped your explanation of TD error.</p><button onClick={() => setSelectedId("reward")}>Explore connection →</button></div>
             </div>
+          ) : dynamicNodes.length > 0 ? (
+            <div className="graph-hint"><Sparkles size={16} /><span>{dynamicNodes.length} concepts were extracted from {notes.length} saved note{notes.length === 1 ? "" : "s"}.</span></div>
           ) : (
             <div className="graph-hint"><Sparkles size={16} /><span>Master a concept, then open Paper 2 to watch your knowledge transfer.</span></div>
           )}
@@ -1094,18 +1358,27 @@ function GraphPane({
         <div className="timeline">
           <div className="timeline-item complete"><i /><span><small>Paper 1</small><strong>Closed-loop learning</strong><p>3 concepts mastered</p></span></div>
           <div className={`timeline-item ${crossPaper ? "complete" : ""}`}><i /><span><small>Paper 2</small><strong>Temporal-difference learning</strong><p>{crossPaper ? "Connected to reward signal" : "Ready to explore"}</p></span></div>
+            {notes.map((note) => <div className="timeline-item complete" key={note.id}><i /><span><small>{new Date(note.updatedAt).toLocaleDateString()}</small><strong>Note · {note.sourceTitle}</strong><p>{note.content.slice(0, 80)}</p></span></div>)}
         </div>
       )}
 
       {activeTab === "list" && (
         <div className="concept-list">
           {concepts.map((concept) => (
-            <div className="concept-row" key={concept.id}>
+            <button className="concept-row" key={concept.id} onClick={() => { setSelectedId(concept.id); onTab("graph"); }}>
               <ListTree size={13} />
               <span className="concept-name">{concept.label.replace("\n", " ")}</span>
               <span className={`concept-paper ${concept.paper}`}>{PAPER_META[concept.paper].shortTitle}</span>
               <span className={`concept-status ${concept.status}`}>{concept.status}</span>
-            </div>
+            </button>
+          ))}
+          {dynamicNodes.map((concept) => (
+            <button className="concept-row" key={concept.id} onClick={() => { setSelectedId(concept.id); onTab("graph"); }}>
+              <ListTree size={13} />
+              <span className="concept-name">{concept.label}</span>
+              <span className="concept-paper note">Note</span>
+              <span className={`concept-status ${concept.status}`}>{concept.status}</span>
+            </button>
           ))}
           {mastered
             .filter((id) => id.startsWith("pdf:"))
