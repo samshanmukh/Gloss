@@ -713,8 +713,10 @@ function Sidebar({
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={{ width: collapsed ? 72 : undefined, flexBasis: collapsed ? 72 : undefined }}>
       <div className="brand">
-        <div className="brand-mark"><Sparkles size={16} /></div>
-        <Link className="brand-copy" href="/"><strong>Gloss</strong><span>Read. Understand. Remember.</span></Link>
+        <Link className="brand-home" href="/" aria-label="Go to the Gloss landing page">
+          <div className="brand-mark"><Sparkles size={16} /></div>
+          <div className="brand-copy"><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        </Link>
         <button
           className="sidebar-toggle"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
