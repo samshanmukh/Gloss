@@ -1,5 +1,5 @@
-import GlossApp from "@/components/GlossApp";
+import LandingPage from "@/components/LandingPage";
 
 export default function Home() {
-  return <GlossApp />;
+  return <LandingPage />;
 }

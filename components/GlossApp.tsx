@@ -37,6 +37,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CommandPalette from "@/components/CommandPalette";
 import PdfReader from "@/components/PdfReader";
@@ -713,7 +714,7 @@ function Sidebar({
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} style={{ width: collapsed ? 72 : undefined, flexBasis: collapsed ? 72 : undefined }}>
       <div className="brand">
         <div className="brand-mark"><Sparkles size={16} /></div>
-        <div className="brand-copy"><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        <Link className="brand-copy" href="/"><strong>Gloss</strong><span>Read. Understand. Remember.</span></Link>
         <button
           className="sidebar-toggle"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -851,6 +852,7 @@ function Header({
               >
                 <Link2 size={13} /> Copy link to this app
               </button>
+              <Link href="/"><Sparkles size={13} /> Project overview</Link>
               <a href="https://github.com/samshanmukh/gloss" target="_blank" rel="noreferrer">
                 <BookOpen size={13} /> View source on GitHub
               </a>

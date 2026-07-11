@@ -4,7 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Gloss — Read. Understand. Remember.",
-  description: "A reading tutor that builds on what you already know.",
+  description:
+    "A memory-native research reading tutor with grounded AI explanations, private PDF rendering, persistent notes, and a living knowledge graph.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
