@@ -17,7 +17,7 @@ type CompletionResponse = {
 };
 
 const DEFAULT_GATEWAY_URL = "https://api.butterbase.ai/v1";
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
+const DEFAULT_MODEL = "google/gemini-3.1-flash-lite";
 
 function config() {
   const apiKey = process.env.BUTTERBASE_API_KEY;

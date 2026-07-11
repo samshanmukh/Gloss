@@ -14,7 +14,7 @@ You can also choose **Upload PDF** in the top bar. PDF.js renders the file entir
 
 Confirmed concepts are written to EverOS and flushed for extraction. Opening the second paper performs a hybrid EverOS retrieval before personalizing the explanation. A browser-local cache keeps the demo usable when the service is unavailable, and the UI labels that fallback as offline.
 
-Every selected passage has a conversational **Ask Gloss** thread. Before each answer, the server retrieves relevant learner memory from EverOS, then sends the source passage, memory, and recent thread to Claude through Butterbase's OpenAI-compatible AI Gateway. The system prompt strictly separates source evidence from personalization memory and requires the model to state when the passage does not support an answer. Each completed exchange is recorded back to EverOS.
+Every selected passage has a conversational **Ask Gloss** thread. Before each answer, the server retrieves relevant learner memory from EverOS, then sends the source passage, memory, and recent thread to Gemini Flash Lite through Butterbase's OpenAI-compatible AI Gateway. The system prompt strictly separates source evidence from personalization memory and requires the model to state when the passage does not support an answer. Each completed exchange is recorded back to EverOS. The model remains configurable through `BUTTERBASE_MODEL`.
 
 ## Run locally
 
