@@ -13,16 +13,20 @@ import {
   Library,
   Link2,
   Menu,
+  Minus,
   Network,
   PanelRight,
+  Plus,
   RotateCcw,
   Search,
   Sparkles,
   StickyNote,
+  Upload,
   X,
 } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import PdfReader from "@/components/PdfReader";
 import {
   BASE_CONCEPTS,
   INITIAL_MEMORY,
@@ -72,6 +76,10 @@ export default function GlossApp() {
   const [showGraph, setShowGraph] = useState(false);
   const [note, setNote] = useState("");
   const [syncState, setSyncState] = useState<MemorySyncState>("checking");
+  const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
+  const [uploadedSelection, setUploadedSelection] = useState("");
+  const [pdfScale, setPdfScale] = useState(1);
+  const [pdfPages, setPdfPages] = useState(0);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -110,6 +118,8 @@ export default function GlossApp() {
   );
 
   async function openPaper(next: PaperId) {
+    setUploadedPdf(null);
+    setUploadedSelection("");
     setPaper(next);
     setExplained(false);
     setShowGraph(next === "td" && memory.mastered.includes("reward_signal"));
@@ -142,6 +152,21 @@ export default function GlossApp() {
       window.setTimeout(() => setShowGraph(true), 400);
     }
   }
+
+  function openUploadedPdf(file: File) {
+    setUploadedPdf(file);
+    setUploadedSelection("");
+    setPdfPages(0);
+    setPdfScale(1);
+    setExplained(false);
+    setShowGraph(false);
+    setNote("");
+  }
+
+  const explainUploadedSelection = useCallback((text: string) => {
+    setUploadedSelection(text);
+    setExplained(true);
+  }, []);
 
   async function confirmUnderstanding() {
     const conceptId = paper === "cortical" ? "reward_signal" : "td_error";
@@ -178,6 +203,8 @@ export default function GlossApp() {
     setConfirmed(false);
     setShowGraph(false);
     setSyncState("connected");
+    setUploadedPdf(null);
+    setUploadedSelection("");
   }
 
   return (
@@ -192,15 +219,27 @@ export default function GlossApp() {
         />
 
         <motion.section className="workspace" initial={{ x: 12 }} animate={{ x: 0 }}>
-          <Header paper={paper} />
+          <Header paper={paper} uploadedPdf={uploadedPdf} onUpload={openUploadedPdf} />
           <div className="reading-grid">
-            <PaperPane paper={paper} explained={explained} onExplain={explainSelection} />
+            <PaperPane
+              paper={paper}
+              explained={explained}
+              onExplain={explainSelection}
+              uploadedPdf={uploadedPdf}
+              pdfPages={pdfPages}
+              pdfScale={pdfScale}
+              onPdfPages={setPdfPages}
+              onPdfScale={setPdfScale}
+              onPdfSelection={explainUploadedSelection}
+            />
             <ExplanationPane
               paper={paper}
               explained={explained}
-              personalized={personalized}
+              personalized={!uploadedPdf && personalized}
               confirmed={paper === "cortical" ? confirmed : memory.mastered.includes("td_error")}
               syncState={syncState}
+              uploadedSelection={uploadedSelection}
+              uploadedName={uploadedPdf?.name}
               note={note}
               onNote={setNote}
               onConfirm={confirmUnderstanding}
@@ -291,11 +330,33 @@ function Sidebar({
   );
 }
 
-function Header({ paper }: { paper: PaperId }) {
+function Header({
+  paper,
+  uploadedPdf,
+  onUpload,
+}: {
+  paper: PaperId;
+  uploadedPdf: File | null;
+  onUpload: (file: File) => void;
+}) {
+  const title = uploadedPdf?.name ?? PAPER_META[paper].title;
+
   return (
     <motion.header className="topbar" initial={{ y: -12 }} animate={{ y: 0 }}>
-      <div className="reading-title"><BookOpen size={16} /> Reading: <AnimatePresence mode="wait"><motion.strong key={paper} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>{PAPER_META[paper].title}</motion.strong></AnimatePresence><ChevronDown size={14} /></div>
+      <div className="reading-title"><BookOpen size={16} /> Reading: <AnimatePresence mode="wait"><motion.strong key={title} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>{title}</motion.strong></AnimatePresence><ChevronDown size={14} /></div>
       <div className="top-actions">
+        <motion.label whileHover={{ y: -1 }} whileTap={{ scale: .96 }} className="upload-button">
+          <Upload size={14} /> Upload PDF
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onUpload(file);
+              event.target.value = "";
+            }}
+          />
+        </motion.label>
         <motion.button whileHover={{ y: -1 }} whileTap={{ scale: .96 }} className="action-primary"><Sparkles size={14} /> Explain</motion.button>
         <motion.button whileHover={{ y: -1 }} whileTap={{ scale: .96 }}><StickyNote size={14} /> Take note</motion.button>
       </div>
@@ -309,12 +370,56 @@ function PaperPane({
   paper,
   explained,
   onExplain,
+  uploadedPdf,
+  pdfPages,
+  pdfScale,
+  onPdfPages,
+  onPdfScale,
+  onPdfSelection,
 }: {
   paper: PaperId;
   explained: boolean;
   onExplain: () => void;
+  uploadedPdf: File | null;
+  pdfPages: number;
+  pdfScale: number;
+  onPdfPages: (pages: number) => void;
+  onPdfScale: (scale: number) => void;
+  onPdfSelection: (text: string) => void;
 }) {
   const copy = PAPER_COPY[paper];
+
+  if (uploadedPdf) {
+    return (
+      <article className="paper-pane uploaded-paper-pane">
+        <div className="reader-toolbar">
+          <Menu size={15} />
+          <span className="uploaded-file-name">{uploadedPdf.name}</span>
+          <span className="page-total">{pdfPages ? `${pdfPages} pages` : "Loading…"}</span>
+          <span className="toolbar-spacer" />
+          <button
+            aria-label="Zoom out"
+            disabled={pdfScale <= .6}
+            onClick={() => onPdfScale(Math.max(.6, Number((pdfScale - .1).toFixed(1))))}
+          ><Minus size={14} /></button>
+          <span className="zoom-value">{Math.round(pdfScale * 100)}%</span>
+          <button
+            aria-label="Zoom in"
+            disabled={pdfScale >= 2}
+            onClick={() => onPdfScale(Math.min(2, Number((pdfScale + .1).toFixed(1))))}
+          ><Plus size={14} /></button>
+          <Focus size={15} />
+        </div>
+        <PdfReader
+          file={uploadedPdf}
+          scale={pdfScale}
+          onDocumentReady={onPdfPages}
+          onTextSelected={onPdfSelection}
+        />
+      </article>
+    );
+  }
+
   return (
     <article className="paper-pane">
       <div className="reader-toolbar">
@@ -396,6 +501,8 @@ function ExplanationPane({
   personalized,
   confirmed,
   syncState,
+  uploadedSelection,
+  uploadedName,
   note,
   onNote,
   onConfirm,
@@ -406,11 +513,15 @@ function ExplanationPane({
   personalized: boolean;
   confirmed: boolean;
   syncState: MemorySyncState;
+  uploadedSelection: string;
+  uploadedName?: string;
   note: string;
   onNote: (note: string) => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const isUploaded = Boolean(uploadedName);
+
   return (
     <section className="explanation-pane">
       <div className="panel-tabs"><button className="active">Explain</button><button>Notes (2)</button><span /><button onClick={onClose}><X size={16} /></button></div>
@@ -429,15 +540,24 @@ function ExplanationPane({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
         >
-          <div className="trust-row"><span><Check size={14} /> Grounded in this paper</span><ChevronDown size={14} /></div>
-          <p className="eyebrow">Explanation</p>
-          <p className="answer">{PAPER_COPY[paper].explanation}</p>
-          <motion.div className="analogy-card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .12 }}>
+          <div className="trust-row"><span><Check size={14} /> {isUploaded ? "Captured from this PDF" : "Grounded in this paper"}</span><ChevronDown size={14} /></div>
+          <p className="eyebrow">{isUploaded ? "Selected passage" : "Explanation"}</p>
+          {isUploaded ? (
+            <>
+              <blockquote className="selection-quote">“{uploadedSelection}”</blockquote>
+              <p className="answer upload-ready-copy">
+                PDF.js captured this directly from <strong>{uploadedName}</strong>. The passage is ready to send as grounded context to the explanation model.
+              </p>
+            </>
+          ) : (
+            <p className="answer">{PAPER_COPY[paper].explanation}</p>
+          )}
+          {!isUploaded && <motion.div className="analogy-card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .12 }}>
             <span><Sparkles size={14} /> Analogy</span>
             <p>{paper === "td"
               ? "Like checking your GPS arrival time: the difference between the ETA and when you actually arrive helps the GPS improve its next estimate."
               : "Like a thermostat getting one number back: warmer or colder. That tiny signal is enough to steer what it tries next."}</p>
-          </motion.div>
+          </motion.div>}
 
           <AnimatePresence>
           {personalized && (
@@ -459,10 +579,12 @@ function ExplanationPane({
             onChange={(event) => onNote(event.target.value)}
           />
           <div className="explanation-footer">
-            <span>{confirmed
+            <span>{isUploaded
+              ? "Grounded selection ready"
+              : confirmed
               ? syncState === "offline" ? "Saved on this device" : "Saved to your understanding"
               : "Does this make sense?"}</span>
-            <motion.button
+            {!isUploaded && <motion.button
               layout
               whileHover={{ y: -1 }}
               whileTap={{ scale: .96 }}
@@ -471,7 +593,7 @@ function ExplanationPane({
             >
               {confirmed ? <Check size={15} /> : <BrainCircuit size={15} />}
               {confirmed ? "Understood" : "Add to understanding"}
-            </motion.button>
+            </motion.button>}
           </div>
         </motion.div>
       )}
