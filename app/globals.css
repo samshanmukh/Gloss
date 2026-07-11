@@ -45,6 +45,7 @@ button:focus-visible, textarea:focus-visible {
     radial-gradient(circle at 80% 2%, rgba(62, 120, 220, .12), transparent 26%),
     linear-gradient(165deg, #101832 0%, #080f21 68%);
   border-right: 1px solid #ffffff0d;
+  overflow: hidden;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 18px; }
@@ -52,8 +53,26 @@ button:focus-visible, textarea:focus-visible {
   display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
   color: white; background: linear-gradient(135deg, #9d8aff, #6542ec); box-shadow: 0 7px 22px #6d4be878, inset 0 1px #ffffff55;
 }
+.brand-copy { min-width: 122px; overflow: hidden; white-space: nowrap; }
 .brand strong { display: block; color: white; font-size: 18px; letter-spacing: -.35px; }
 .brand span { display: block; color: #858ba3; font-size: 8px; margin-top: 2px; }
+.sidebar-toggle {
+  width: 27px; height: 27px; flex: 0 0 auto; display: grid; place-items: center; margin-left: auto;
+  border: 1px solid #ffffff14; border-radius: 7px; color: #8790ad; background: #ffffff08; cursor: pointer;
+}
+.sidebar-toggle:hover { color: white; border-color: #ffffff2b; background: #ffffff10; }
+.sidebar.collapsed { padding-inline: 8px; }
+.sidebar.collapsed .brand { justify-content: center; padding-inline: 0; }
+.sidebar.collapsed .brand-mark, .sidebar.collapsed .brand-copy { display: none; }
+.sidebar.collapsed .sidebar-toggle { margin: 0; }
+.sidebar.collapsed .primary-nav button { justify-content: center; gap: 0; font-size: 0; padding-inline: 0; }
+.sidebar.collapsed .side-label,
+.sidebar.collapsed .paper-card span,
+.sidebar.collapsed .profile-card,
+.sidebar.collapsed .sync-card,
+.sidebar.collapsed .reset-button { display: none; }
+.sidebar.collapsed .paper-card { justify-content: center; padding-inline: 0; }
+.sidebar.collapsed .paper-card > svg { margin: 0; }
 .primary-nav { display: grid; gap: 4px; }
 .primary-nav button, .paper-card, .reset-button {
   border: 0; background: transparent; color: #adb2c8; cursor: pointer; text-align: left;
@@ -446,9 +465,11 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 
 @media (max-width: 900px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }
-  .sidebar { width: 72px; flex-basis: 72px; padding: 16px 8px; }
-  .brand { padding-left: 13px; }
-  .brand > div:last-child, .primary-nav button:not(.active), .primary-nav button.active { font-size: 0; }
+  .sidebar { width: 72px !important; flex-basis: 72px !important; padding: 16px 8px; }
+  .brand { justify-content: center; padding-inline: 0; }
+  .brand-copy, .sidebar-toggle { display: none; }
+  .sidebar.collapsed .brand-mark { display: grid; }
+  .primary-nav button:not(.active), .primary-nav button.active { font-size: 0; }
   .primary-nav button { justify-content: center; }
   .side-label, .paper-card span, .profile-card, .sync-card, .reset-button { display: none; }
   .paper-card { justify-content: center; padding: 12px; }

@@ -16,6 +16,8 @@ import {
   Menu,
   Minus,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRight,
   Plus,
   RotateCcw,
@@ -88,6 +90,7 @@ export default function GlossApp() {
   const [chatDraft, setChatDraft] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -277,6 +280,8 @@ export default function GlossApp() {
           onReset={resetDemo}
           confirmed={confirmed}
           syncState={syncState}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((value) => !value)}
         />
 
         <motion.section className="workspace" initial={{ x: 12 }} animate={{ x: 0 }}>
@@ -332,12 +337,16 @@ function Sidebar({
   onReset,
   confirmed,
   syncState,
+  collapsed,
+  onToggle,
 }: {
   paper: PaperId;
   onOpenPaper: (paper: PaperId) => void;
   onReset: () => void;
   confirmed: boolean;
   syncState: MemorySyncState;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
   const syncMessage = {
     checking: "Retrieving learner memory…",
@@ -348,16 +357,29 @@ function Sidebar({
   }[syncState];
 
   return (
-    <motion.aside className="sidebar" initial={{ x: -24 }} animate={{ x: 0 }}>
+    <motion.aside
+      className={`sidebar ${collapsed ? "collapsed" : ""}`}
+      initial={{ x: -24 }}
+      animate={{ x: 0, width: collapsed ? 72 : 236, flexBasis: collapsed ? 72 : 236 }}
+    >
       <motion.div className="brand" whileHover={{ x: 2 }}>
         <motion.div className="brand-mark" whileHover={{ rotate: 8, scale: 1.08 }}><Sparkles size={16} /></motion.div>
-        <div><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        <div className="brand-copy"><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
+        <motion.button
+          className="sidebar-toggle"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggle}
+          whileTap={{ scale: .9 }}
+        >
+          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+        </motion.button>
       </motion.div>
       <nav className="primary-nav" aria-label="Primary navigation">
-        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }} className="active"><Library size={17} /> Library</motion.button>
-        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><Network size={17} /> Knowledge</motion.button>
-        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><StickyNote size={17} /> Notes</motion.button>
-        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><BrainCircuit size={17} /> Memory</motion.button>
+        <motion.button title="Library" whileHover={{ x: 3 }} whileTap={{ scale: .98 }} className="active"><Library size={17} /> Library</motion.button>
+        <motion.button title="Knowledge" whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><Network size={17} /> Knowledge</motion.button>
+        <motion.button title="Notes" whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><StickyNote size={17} /> Notes</motion.button>
+        <motion.button title="Memory" whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><BrainCircuit size={17} /> Memory</motion.button>
       </nav>
 
       <p className="side-label">Your papers</p>
@@ -368,6 +390,7 @@ function Sidebar({
           whileTap={{ scale: .98 }}
           className={`paper-card ${paper === id ? "selected" : ""}`}
           key={id}
+          title={PAPER_META[id].title}
           onClick={() => onOpenPaper(id)}
         >
           <FileText size={17} />
