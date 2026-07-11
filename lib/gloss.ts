@@ -1,4 +1,5 @@
 export type PaperId = "cortical" | "td";
+export type SourceId = PaperId | "pdf";
 
 export type Concept = {
   id: string;
@@ -9,8 +10,13 @@ export type Concept = {
   y: number;
 };
 
+export type Learner = {
+  id: string;
+  name: string;
+};
+
 export type LearnerMemory = {
-  learnerId: "sam";
+  learnerId: string;
   preferredStyle: "short_plus_analogy";
   mastered: string[];
 };
@@ -22,6 +28,28 @@ export type RetrievedLearnerMemory = {
   hasRewardSignal: boolean;
   evidence: string[];
 };
+
+export type QAEntry = {
+  id: string;
+  question: string;
+  answer: string;
+  pending?: boolean;
+  error?: boolean;
+};
+
+export type AppNotification = {
+  id: string;
+  text: string;
+  detail?: string;
+  at: number;
+  read: boolean;
+};
+
+export type FeedbackValue = "up" | "down";
+
+export const DEFAULT_LEARNER: Learner = { id: "sam", name: "Sam" };
+
+export const READING_GOAL_HOURS = 3;
 
 export const PAPER_META = {
   cortical: {
@@ -38,46 +66,79 @@ export const PAPER_META = {
   },
 } as const;
 
-export const INITIAL_MEMORY: LearnerMemory = {
-  learnerId: "sam",
-  preferredStyle: "short_plus_analogy",
-  mastered: [],
+export function initialMemory(learnerId: string): LearnerMemory {
+  return { learnerId, preferredStyle: "short_plus_analogy", mastered: [] };
+}
+
+function storageKey(base: string, learnerId: string) {
+  return `gloss-${base}-${learnerId}`;
+}
+
+function readJSON<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJSON(key: string, value: unknown) {
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+/* ── learner (demo auth) ─────────────────────────────────────────── */
+
+export const learnerStore = {
+  read(): Learner {
+    return readJSON<Learner>("gloss-learner", DEFAULT_LEARNER);
+  },
+  write(learner: Learner) {
+    writeJSON("gloss-learner", learner);
+  },
+  toId(name: string) {
+    return (
+      name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48) || "learner"
+    );
+  },
 };
 
-const STORAGE_KEY = "gloss-demo-memory";
+/* ── local learner memory + EverOS bridge ────────────────────────── */
 
 export const memoryAdapter = {
-  read(): LearnerMemory {
-    if (typeof window === "undefined") return INITIAL_MEMORY;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return INITIAL_MEMORY;
-    try {
-      return JSON.parse(stored) as LearnerMemory;
-    } catch {
-      return INITIAL_MEMORY;
-    }
+  read(learnerId: string): LearnerMemory {
+    return readJSON(storageKey("memory", learnerId), initialMemory(learnerId));
   },
   write(memory: LearnerMemory) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memory));
+    writeJSON(storageKey("memory", memory.learnerId), memory);
   },
-  reset() {
-    window.localStorage.removeItem(STORAGE_KEY);
+  reset(learnerId: string) {
+    window.localStorage.removeItem(storageKey("memory", learnerId));
   },
-  async retrieve(query: string): Promise<RetrievedLearnerMemory> {
+  async retrieve(learnerId: string, query: string): Promise<RetrievedLearnerMemory> {
     const response = await fetch("/api/memory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "retrieve", learnerId: "sam", query }),
+      body: JSON.stringify({ action: "retrieve", learnerId, query }),
     });
     const result = (await response.json()) as RetrievedLearnerMemory & { error?: string };
     if (!response.ok) throw new Error(result.error || "EverOS retrieval failed");
     return result;
   },
   async confirm({
+    learnerId,
     concept,
     understanding,
     learnedFrom,
   }: {
+    learnerId: string;
     concept: string;
     understanding: string;
     learnedFrom: string;
@@ -85,19 +146,68 @@ export const memoryAdapter = {
     const response = await fetch("/api/memory", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "confirm",
-        learnerId: "sam",
-        concept,
-        understanding,
-        learnedFrom,
-      }),
+      body: JSON.stringify({ action: "confirm", learnerId, concept, understanding, learnedFrom }),
     });
     const result = (await response.json()) as { available: boolean; status?: string; error?: string };
     if (!response.ok) throw new Error(result.error || "EverOS write failed");
     return result;
   },
+  async ask({
+    learnerId,
+    question,
+    context,
+    source,
+  }: {
+    learnerId: string;
+    question: string;
+    context: string;
+    source: string;
+  }): Promise<string> {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ learnerId, question, context, source }),
+    });
+    const result = (await response.json()) as { answer?: string; error?: string };
+    if (!response.ok || !result.answer) throw new Error(result.error || "Tutor is unavailable");
+    return result.answer;
+  },
 };
+
+/* ── explanation feedback ────────────────────────────────────────── */
+
+export const feedbackStore = {
+  read(learnerId: string): Record<string, FeedbackValue> {
+    return readJSON(storageKey("feedback", learnerId), {});
+  },
+  write(learnerId: string, feedback: Record<string, FeedbackValue>) {
+    writeJSON(storageKey("feedback", learnerId), feedback);
+  },
+};
+
+/* ── reading time ────────────────────────────────────────────────── */
+
+export function todayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+export const readingTimeStore = {
+  read(learnerId: string): number {
+    return readJSON(storageKey(`time-${todayKey()}`, learnerId), 0);
+  },
+  add(learnerId: string, seconds: number): number {
+    const total = readingTimeStore.read(learnerId) + seconds;
+    writeJSON(storageKey(`time-${todayKey()}`, learnerId), total);
+    return total;
+  },
+};
+
+export function formatHours(seconds: number) {
+  return (seconds / 3600).toFixed(1);
+}
+
+/* ── graph data ──────────────────────────────────────────────────── */
 
 export const BASE_CONCEPTS: Concept[] = [
   { id: "sensor", label: "Sensory\nfeedback", paper: "cortical", status: "mastered", x: 68, y: 72 },

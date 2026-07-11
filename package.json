@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "node -e \"fs.mkdirSync('public',{recursive:true});fs.copyFileSync(require.resolve('pdfjs-dist/build/pdf.worker.min.mjs'),'public/pdf.worker.min.mjs')\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -25,6 +26,7 @@
   "dependencies": {
     "lucide-react": "^1.24.0",
     "next": "^16.2.10",
+    "pdfjs-dist": "^6.1.200",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

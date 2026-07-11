@@ -2,6 +2,7 @@
 node_modules/
 out/
 .vercel/
+public/pdf.worker.min.mjs
 .env*
 !.env.example
 *.log
