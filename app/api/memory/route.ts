@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { retrieveLearnerMemory, storeConfirmedConcept } from "@/lib/everos-server";
 
+// Required for Butterbase Edge SSR deployment (Cloudflare Workers).
+export const runtime = "edge";
+
 type MemoryRequest =
   | { action: "retrieve"; learnerId: string; query: string }
   | {
