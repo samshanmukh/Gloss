@@ -21,6 +21,7 @@ import {
   StickyNote,
   X,
 } from "lucide-react";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import {
   BASE_CONCEPTS,
@@ -180,40 +181,42 @@ export default function GlossApp() {
   }
 
   return (
-    <main className="app-shell">
-      <Sidebar
-        paper={paper}
-        onOpenPaper={openPaper}
-        onReset={resetDemo}
-        confirmed={confirmed}
-        syncState={syncState}
-      />
+    <MotionConfig reducedMotion="user" transition={{ type: "spring", stiffness: 320, damping: 30 }}>
+      <motion.main className="app-shell" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+        <Sidebar
+          paper={paper}
+          onOpenPaper={openPaper}
+          onReset={resetDemo}
+          confirmed={confirmed}
+          syncState={syncState}
+        />
 
-      <section className="workspace">
-        <Header paper={paper} />
-        <div className="reading-grid">
-          <PaperPane paper={paper} explained={explained} onExplain={explainSelection} />
-          <ExplanationPane
-            paper={paper}
-            explained={explained}
-            personalized={personalized}
-            confirmed={paper === "cortical" ? confirmed : memory.mastered.includes("td_error")}
-            syncState={syncState}
-            note={note}
-            onNote={setNote}
-            onConfirm={confirmUnderstanding}
-            onClose={() => setExplained(false)}
-          />
-          <GraphPane
-            concepts={concepts}
-            activeTab={graphTab}
-            onTab={setGraphTab}
-            crossPaper={showGraph}
-          />
-        </div>
-        <ProgressBar paper={paper} confirmed={confirmed} crossPaper={showGraph} />
-      </section>
-    </main>
+        <motion.section className="workspace" initial={{ x: 12 }} animate={{ x: 0 }}>
+          <Header paper={paper} />
+          <div className="reading-grid">
+            <PaperPane paper={paper} explained={explained} onExplain={explainSelection} />
+            <ExplanationPane
+              paper={paper}
+              explained={explained}
+              personalized={personalized}
+              confirmed={paper === "cortical" ? confirmed : memory.mastered.includes("td_error")}
+              syncState={syncState}
+              note={note}
+              onNote={setNote}
+              onConfirm={confirmUnderstanding}
+              onClose={() => setExplained(false)}
+            />
+            <GraphPane
+              concepts={concepts}
+              activeTab={graphTab}
+              onTab={setGraphTab}
+              crossPaper={showGraph}
+            />
+          </div>
+          <ProgressBar paper={paper} confirmed={confirmed} crossPaper={showGraph} />
+        </motion.section>
+      </motion.main>
+    </MotionConfig>
   );
 }
 
@@ -239,59 +242,66 @@ function Sidebar({
   }[syncState];
 
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark"><Sparkles size={16} /></div>
+    <motion.aside className="sidebar" initial={{ x: -24 }} animate={{ x: 0 }}>
+      <motion.div className="brand" whileHover={{ x: 2 }}>
+        <motion.div className="brand-mark" whileHover={{ rotate: 8, scale: 1.08 }}><Sparkles size={16} /></motion.div>
         <div><strong>Gloss</strong><span>Read. Understand. Remember.</span></div>
-      </div>
+      </motion.div>
       <nav className="primary-nav" aria-label="Primary navigation">
-        <button className="active"><Library size={17} /> Library</button>
-        <button><Network size={17} /> Knowledge</button>
-        <button><StickyNote size={17} /> Notes</button>
-        <button><BrainCircuit size={17} /> Memory</button>
+        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }} className="active"><Library size={17} /> Library</motion.button>
+        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><Network size={17} /> Knowledge</motion.button>
+        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><StickyNote size={17} /> Notes</motion.button>
+        <motion.button whileHover={{ x: 3 }} whileTap={{ scale: .98 }}><BrainCircuit size={17} /> Memory</motion.button>
       </nav>
 
       <p className="side-label">Your papers</p>
       {(Object.keys(PAPER_META) as PaperId[]).map((id) => (
-        <button className={`paper-card ${paper === id ? "selected" : ""}`} key={id} onClick={() => onOpenPaper(id)}>
+        <motion.button
+          layout
+          whileHover={{ x: 3, backgroundColor: "rgba(255,255,255,.07)" }}
+          whileTap={{ scale: .98 }}
+          className={`paper-card ${paper === id ? "selected" : ""}`}
+          key={id}
+          onClick={() => onOpenPaper(id)}
+        >
           <FileText size={17} />
           <span>
             <strong>{PAPER_META[id].title}</strong>
             <small>{PAPER_META[id].authors}</small>
             <i><b style={{ width: `${PAPER_META[id].progress}%` }} /></i>
           </span>
-        </button>
+        </motion.button>
       ))}
 
-      <div className="profile-card">
+      <motion.div className="profile-card" whileHover={{ y: -2 }}>
         <div className="profile-heading"><GraduationCap size={17} /><strong>Sam’s learning profile</strong></div>
         <dl>
           <div><dt>Field</dt><dd>Neuroscience</dd></div>
           <div><dt>Level</dt><dd>Biology strong · ML new</dd></div>
           <div><dt>Style</dt><dd>Short · analogy first</dd></div>
         </dl>
-      </div>
-      <div className="sync-card">
+      </motion.div>
+      <motion.div className="sync-card" layout animate={{ borderColor: syncState === "offline" ? "#6a4f32" : "#1d4a3c" }}>
         <span className={`sync-dot ${syncState !== "offline" ? "live" : ""} ${syncState}`} />
         <div><strong>EverOS memory</strong><small>{syncMessage}</small></div>
         {syncState === "synced" || syncState === "connected" ? <Check size={14} /> : <BrainCircuit size={14} />}
-      </div>
+      </motion.div>
       <button className="reset-button" onClick={onReset}><RotateCcw size={14} /> Reset local demo</button>
-    </aside>
+    </motion.aside>
   );
 }
 
 function Header({ paper }: { paper: PaperId }) {
   return (
-    <header className="topbar">
-      <div className="reading-title"><BookOpen size={16} /> Reading: <strong>{PAPER_META[paper].title}</strong><ChevronDown size={14} /></div>
+    <motion.header className="topbar" initial={{ y: -12 }} animate={{ y: 0 }}>
+      <div className="reading-title"><BookOpen size={16} /> Reading: <AnimatePresence mode="wait"><motion.strong key={paper} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}>{PAPER_META[paper].title}</motion.strong></AnimatePresence><ChevronDown size={14} /></div>
       <div className="top-actions">
-        <button className="action-primary"><Sparkles size={14} /> Explain</button>
-        <button><StickyNote size={14} /> Take note</button>
+        <motion.button whileHover={{ y: -1 }} whileTap={{ scale: .96 }} className="action-primary"><Sparkles size={14} /> Explain</motion.button>
+        <motion.button whileHover={{ y: -1 }} whileTap={{ scale: .96 }}><StickyNote size={14} /> Take note</motion.button>
       </div>
       <div className="search"><Search size={15} /><span>Search your knowledge</span><kbd>⌘ K</kbd></div>
-      <div className="avatar">S</div>
-    </header>
+      <motion.div className="avatar" whileHover={{ scale: 1.08 }}>S</motion.div>
+    </motion.header>
   );
 }
 
@@ -312,29 +322,53 @@ function PaperPane({
         <span className="toolbar-spacer" />
         <Search size={15} /><span>125%</span><ChevronDown size={13} /><Focus size={15} /><PanelRight size={15} />
       </div>
-      <div className="paper-page">
-        <p className="paper-kicker">{copy.kicker}</p>
-        <h1>{copy.title}</h1>
-        <p>{copy.intro}</p>
-        <button className={`selected-passage ${explained ? "explained" : ""}`} onClick={onExplain}>
-          {copy.selection}
-          {!explained && <span className="explain-chip"><Sparkles size={13} /> Explain this</span>}
-        </button>
-        <p>{copy.after}</p>
-        {paper === "td" ? <TDFormula /> : <ClosedLoopFigure />}
-        <small className="figure-caption">{copy.caption}</small>
-        <div className="paper-footnote">
-          <span>Gloss demo excerpt · Page 12</span>
-          <button onClick={onExplain}><Sparkles size={14} /> Ask about this page</button>
-        </div>
-      </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          className="paper-page"
+          key={paper}
+          initial={{ opacity: 0, x: 18, filter: "blur(4px)" }}
+          animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, x: -12, filter: "blur(3px)" }}
+          transition={{ duration: .28, ease: "easeOut" }}
+        >
+          <p className="paper-kicker">{copy.kicker}</p>
+          <h1>{copy.title}</h1>
+          <p>{copy.intro}</p>
+          <motion.button
+            className={`selected-passage ${explained ? "explained" : ""}`}
+            onClick={onExplain}
+            whileTap={{ scale: .995 }}
+          >
+            {copy.selection}
+            <AnimatePresence>
+              {!explained && (
+                <motion.span
+                  className="explain-chip"
+                  initial={{ opacity: 0, y: -6, scale: .92 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: .94 }}
+                >
+                  <Sparkles size={13} /> Explain this
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </motion.button>
+          <p>{copy.after}</p>
+          {paper === "td" ? <TDFormula /> : <ClosedLoopFigure />}
+          <small className="figure-caption">{copy.caption}</small>
+          <div className="paper-footnote">
+            <span>Gloss demo excerpt · Page 12</span>
+            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: .97 }} onClick={onExplain}><Sparkles size={14} /> Ask about this page</motion.button>
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </article>
   );
 }
 
 function TDFormula() {
   return (
-    <div className="paper-figure td-figure">
+    <motion.div className="paper-figure td-figure" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .12 }}>
       <div className="formula">V(s<sub>t</sub>) ← V(s<sub>t</sub>) + α [r<sub>t+1</sub> + γV(s<sub>t+1</sub>) − V(s<sub>t</sub>)]</div>
       <div className="flow-diagram">
         <span className="flow-node blue">Current<br />estimate</span><b>→</b>
@@ -342,17 +376,17 @@ function TDFormula() {
         <span className="flow-node orange">Next<br />estimate</span><b>→</b>
         <span className="flow-node purple">Updated<br />estimate</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function ClosedLoopFigure() {
   return (
-    <div className="paper-figure loop-figure">
+    <motion.div className="paper-figure loop-figure" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .12 }}>
       <div className="culture"><BrainCircuit size={30} /><strong>Neural culture</strong><span>chooses an action</span></div>
       <div className="loop-arrows"><span>action →</span><span>← scalar feedback</span></div>
       <div className="culture environment"><Focus size={30} /><strong>Environment</strong><span>returns “odor” value</span></div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -380,33 +414,42 @@ function ExplanationPane({
   return (
     <section className="explanation-pane">
       <div className="panel-tabs"><button className="active">Explain</button><button>Notes (2)</button><span /><button onClick={onClose}><X size={16} /></button></div>
+      <AnimatePresence mode="wait">
       {!explained ? (
-        <div className="empty-explanation">
+        <motion.div className="empty-explanation" key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <div><Highlighter size={24} /></div>
           <h2>Select something you want to understand</h2>
           <p>Highlight a passage in the paper and Gloss will explain it using the source and what you already know.</p>
-        </div>
+        </motion.div>
       ) : (
-        <div className="explanation-content">
+        <motion.div
+          className="explanation-content"
+          key={`${paper}-explanation`}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+        >
           <div className="trust-row"><span><Check size={14} /> Grounded in this paper</span><ChevronDown size={14} /></div>
           <p className="eyebrow">Explanation</p>
           <p className="answer">{PAPER_COPY[paper].explanation}</p>
-          <div className="analogy-card">
+          <motion.div className="analogy-card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .12 }}>
             <span><Sparkles size={14} /> Analogy</span>
             <p>{paper === "td"
               ? "Like checking your GPS arrival time: the difference between the ETA and when you actually arrive helps the GPS improve its next estimate."
               : "Like a thermostat getting one number back: warmer or colder. That tiny signal is enough to steer what it tries next."}</p>
-          </div>
+          </motion.div>
 
+          <AnimatePresence>
           {personalized && (
-            <div className="memory-section">
+            <motion.div className="memory-section" initial={{ opacity: 0, y: 10, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -5 }}>
               <p className="eyebrow">Built on your knowledge</p>
-              <div className="memory-card">
+              <motion.div className="memory-card" whileHover={{ y: -2 }}>
                 <div className="memory-icon"><Link2 size={15} /></div>
                 <div><strong>Reward signal</strong><p>Retrieved via EverOS · <em>Embodied Neurocomputation</em></p><button>View in graph →</button></div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           <textarea
             className="note-input"
@@ -419,13 +462,20 @@ function ExplanationPane({
             <span>{confirmed
               ? syncState === "offline" ? "Saved on this device" : "Saved to your understanding"
               : "Does this make sense?"}</span>
-            <button className={`understand-button ${confirmed ? "confirmed" : ""}`} onClick={onConfirm}>
+            <motion.button
+              layout
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: .96 }}
+              className={`understand-button ${confirmed ? "confirmed" : ""}`}
+              onClick={onConfirm}
+            >
               {confirmed ? <Check size={15} /> : <BrainCircuit size={15} />}
               {confirmed ? "Understood" : "Add to understanding"}
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </section>
   );
 }
@@ -442,19 +492,20 @@ function GraphPane({
   crossPaper: boolean;
 }) {
   return (
-    <aside className="graph-pane">
+    <motion.aside className="graph-pane" initial={{ x: 16 }} animate={{ x: 0 }}>
       <div className="graph-header"><div><Network size={16} /><strong>Your knowledge</strong></div><CircleHelp size={15} /></div>
       <div className="graph-tabs">
-        <button className={activeTab === "graph" ? "active" : ""} onClick={() => onTab("graph")}>Graph</button>
-        <button className={activeTab === "timeline" ? "active" : ""} onClick={() => onTab("timeline")}>Timeline</button>
+        <motion.button whileTap={{ scale: .96 }} className={activeTab === "graph" ? "active" : ""} onClick={() => onTab("graph")}>Graph</motion.button>
+        <motion.button whileTap={{ scale: .96 }} className={activeTab === "timeline" ? "active" : ""} onClick={() => onTab("timeline")}>Timeline</motion.button>
       </div>
+      <AnimatePresence mode="wait">
       {activeTab === "graph" ? (
-        <>
+        <motion.div key="graph" className="graph-content" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}>
           <div className="graph-legend">
             <span><i className="paper-one" /> Paper 1</span><span><i className="paper-two" /> Paper 2</span><span><i className="mastered" /> Mastered</span>
           </div>
           <div className="knowledge-canvas">
-            <svg viewBox="0 0 380 275" role="img" aria-label="Knowledge graph connecting concepts from two papers">
+            <motion.svg viewBox="0 0 380 275" role="img" aria-label="Knowledge graph connecting concepts from two papers">
               <defs>
                 <marker id="arrow" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
                   <path d="M0,0 L0,7 L7,3.5 z" fill="#a8a4c7" />
@@ -465,55 +516,87 @@ function GraphPane({
                 [68, 72, 146, 118], [146, 118, 58, 176], [146, 118, 175, 54],
                 [276, 83, 323, 154], [323, 154, 251, 213],
               ].map((line, index) => (
-                <line key={index} x1={line[0]} y1={line[1]} x2={line[2]} y2={line[3]} className="graph-line" markerEnd="url(#arrow)" />
+                <motion.line
+                  key={index}
+                  x1={line[0]}
+                  y1={line[1]}
+                  x2={line[2]}
+                  y2={line[3]}
+                  className="graph-line"
+                  markerEnd="url(#arrow)"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ delay: .08 * index, duration: .45 }}
+                />
               ))}
-              {crossPaper && <line x1="175" y1="54" x2="323" y2="154" className="cross-line" markerEnd="url(#arrow)" />}
+              <AnimatePresence>
+                {crossPaper && (
+                  <motion.line
+                    x1="175" y1="54" x2="323" y2="154"
+                    className="cross-line" markerEnd="url(#arrow)"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 1 }}
+                    exit={{ pathLength: 0, opacity: 0 }}
+                    transition={{ duration: .8, ease: "easeOut" }}
+                  />
+                )}
+              </AnimatePresence>
               {concepts.map((concept) => (
-                <g key={concept.id} className={`concept-node ${concept.paper} ${concept.status} ${concept.id === "td-error" && crossPaper ? "arrive" : ""}`} transform={`translate(${concept.x} ${concept.y})`}>
+                <motion.g
+                  key={concept.id}
+                  className={`concept-node ${concept.paper} ${concept.status}`}
+                  transform={`translate(${concept.x} ${concept.y})`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: .12 }}
+                >
                   <circle r={concept.id === "td-error" || concept.id === "closed-loop" ? 35 : 29} />
                   <text textAnchor="middle">
                     {concept.label.split("\n").map((line, i) => <tspan x="0" dy={i === 0 ? "-2" : "13"} key={line}>{line}</tspan>)}
                   </text>
                   {concept.status === "mastered" && <g transform="translate(21 -22)"><circle className="check-dot" r="8" /><path d="M-3 0 l2 2 4 -5" /></g>}
-                </g>
+                </motion.g>
               ))}
-            </svg>
+            </motion.svg>
           </div>
+          <AnimatePresence mode="wait">
           {crossPaper ? (
-            <div className="connection-card pop-in">
+            <motion.div key="connected" className="connection-card" initial={{ opacity: 0, y: 10, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -5 }} whileHover={{ y: -2 }}>
               <div className="connection-icon"><Link2 size={16} /></div>
               <div><strong>Cross-paper connection</strong><p>Reward signal shaped your explanation of TD error.</p><button>Explore connection →</button></div>
-            </div>
+            </motion.div>
           ) : (
-            <div className="graph-hint"><Sparkles size={16} /><span>Master a concept, then open Paper 2 to watch your knowledge transfer.</span></div>
+            <motion.div key="hint" className="graph-hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><Sparkles size={16} /><span>Master a concept, then open Paper 2 to watch your knowledge transfer.</span></motion.div>
           )}
-        </>
+          </AnimatePresence>
+        </motion.div>
       ) : (
-        <div className="timeline">
+        <motion.div key="timeline" className="timeline" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}>
           <div className="timeline-item complete"><i /><span><small>Paper 1</small><strong>Closed-loop learning</strong><p>3 concepts mastered</p></span></div>
           <div className={`timeline-item ${crossPaper ? "complete" : ""}`}><i /><span><small>Paper 2</small><strong>Temporal-difference learning</strong><p>{crossPaper ? "Connected to reward signal" : "Ready to explore"}</p></span></div>
-        </div>
+        </motion.div>
       )}
-    </aside>
+      </AnimatePresence>
+    </motion.aside>
   );
 }
 
 function ProgressBar({ paper, confirmed, crossPaper }: { paper: PaperId; confirmed: boolean; crossPaper: boolean }) {
   return (
-    <footer className="progress-bar">
+    <motion.footer className="progress-bar" initial={{ y: 14 }} animate={{ y: 0 }}>
       <div className="today-progress">
-        <div className="ring"><span>{crossPaper ? "82" : confirmed ? "72" : "48"}%</span></div>
+        <motion.div className="ring" animate={{ rotate: crossPaper ? 360 : 0 }} transition={{ duration: .7 }}><span>{crossPaper ? "82" : confirmed ? "72" : "48"}%</span></motion.div>
         <span><strong>Today’s progress</strong><small>{confirmed ? "Your understanding is taking shape." : "Keep reading, Sam."}</small></span>
       </div>
-      <div className="metric"><strong>{confirmed ? 6 : 5}</strong><span>Concepts mastered</span></div>
-      <div className="metric"><strong>{crossPaper ? 9 : 8}</strong><span>Connections drawn</span></div>
-      <div className="metric"><strong>{paper === "td" ? 2 : 1}</strong><span>Papers explored</span></div>
+      <div className="metric"><AnimatePresence mode="wait"><motion.strong key={confirmed ? 6 : 5} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{confirmed ? 6 : 5}</motion.strong></AnimatePresence><span>Concepts mastered</span></div>
+      <div className="metric"><AnimatePresence mode="wait"><motion.strong key={crossPaper ? 9 : 8} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{crossPaper ? 9 : 8}</motion.strong></AnimatePresence><span>Connections drawn</span></div>
+      <div className="metric"><AnimatePresence mode="wait"><motion.strong key={paper === "td" ? 2 : 1} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>{paper === "td" ? 2 : 1}</motion.strong></AnimatePresence><span>Papers explored</span></div>
       <div className="recent">
         <strong>Recent understanding</strong>
         <span className="recent-chip green">Closed loop</span>
         <span className="recent-chip blue">Reward signal</span>
-        {crossPaper && <span className="recent-chip purple">TD error</span>}
+        <AnimatePresence>{crossPaper && <motion.span className="recent-chip purple" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>TD error</motion.span>}</AnimatePresence>
       </div>
-    </footer>
+    </motion.footer>
   );
 }

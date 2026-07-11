@@ -36,6 +36,7 @@ npm run build
 - A source-grounded explanation demo with explicit memory provenance
 - Server-only EverOS v1 API integration for confirmed concept writes and hybrid retrieval
 - Browser `localStorage` fallback behind `memoryAdapter` for resilient demo persistence
+- Framer Motion for spring-based transitions with reduced-motion support
 - React and SVG for the animated concept graph
 - Responsive desktop, tablet, and mobile layouts
 
