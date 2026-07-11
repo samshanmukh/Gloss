@@ -265,6 +265,64 @@ export const graphStore = {
   },
 };
 
+/* ── private browser PDF storage ─────────────────────────────────── */
+
+const PDF_DB = "gloss-private-library";
+const PDF_STORE = "papers";
+
+function openPdfDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(PDF_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PDF_STORE)) {
+        request.result.createObjectStore(PDF_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Could not open the PDF library"));
+  });
+}
+
+export const pdfStore = {
+  async read(learnerId: string): Promise<File | null> {
+    if (typeof window === "undefined" || !window.indexedDB) return null;
+    const db = await openPdfDatabase();
+    try {
+      return await new Promise<File | null>((resolve, reject) => {
+        const request = db.transaction(PDF_STORE, "readonly").objectStore(PDF_STORE).get(learnerId);
+        request.onsuccess = () => resolve((request.result as File | undefined) ?? null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  },
+  async write(learnerId: string, file: File): Promise<void> {
+    const db = await openPdfDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).put(file, learnerId);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  },
+  async clear(learnerId: string): Promise<void> {
+    const db = await openPdfDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).delete(learnerId);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  },
+};
+
 /* ── reading time ────────────────────────────────────────────────── */
 
 export function todayKey() {

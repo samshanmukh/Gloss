@@ -62,11 +62,13 @@ import {
   learnerStore,
   memoryAdapter,
   noteStore,
+  pdfStore,
   readingTimeStore,
 } from "@/lib/gloss";
 
 type GraphTab = "graph" | "timeline" | "list";
 type OpenMenu = "bell" | "more" | "avatar" | null;
+type NavView = "library" | "knowledge" | "notes" | "memory";
 
 const PAPER_COPY = {
   cortical: {
@@ -106,6 +108,7 @@ function nextId(prefix: string) {
 export default function GlossApp() {
   const [learner, setLearner] = useState<Learner | null>(DEFAULT_LEARNER);
   const [signInOpen, setSignInOpen] = useState(false);
+  const [activeView, setActiveView] = useState<NavView>("library");
   const [source, setSource] = useState<SourceId>("cortical");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfSelection, setPdfSelection] = useState<{ text: string; page: number } | null>(null);
@@ -119,12 +122,17 @@ export default function GlossApp() {
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph>({ nodes: [], edges: [] });
   const [noteSyncing, setNoteSyncing] = useState(false);
   const [noteFocusTick, setNoteFocusTick] = useState(0);
+  const [notePanelTick, setNotePanelTick] = useState(0);
   const [syncState, setSyncState] = useState<MemorySyncState>("checking");
   const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
   const [feedback, setFeedback] = useState<Record<string, FeedbackValue>>({});
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [memoryEvidence, setMemoryEvidence] = useState<string[]>([]);
+  const [memoryQuery, setMemoryQuery] = useState("confirmed concepts, notes, questions, and learning preferences");
+  const [memoryLoading, setMemoryLoading] = useState(false);
   const [readingSeconds, setReadingSeconds] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const graphPaneRef = useRef<HTMLElement>(null);
@@ -155,6 +163,7 @@ export default function GlossApp() {
     setNotes(noteStore.read(active.id));
     setKnowledgeGraph(graphStore.read(active.id));
     setReadingSeconds(readingTimeStore.read(active.id));
+    void pdfStore.read(active.id).then((storedPdf) => setPdfFile(storedPdf)).catch(() => setPdfFile(null));
     setSyncState("checking");
     void memoryAdapter
       .retrieve(active.id, "confirmed concepts, learning style, and understanding of reward signals")
@@ -215,6 +224,7 @@ export default function GlossApp() {
   );
 
   async function openPaper(next: PaperId) {
+    setActiveView("library");
     setSource(next);
     setExplained(false);
     setPdfSelection(null);
@@ -244,14 +254,36 @@ export default function GlossApp() {
     }
   }
 
-  function openPdf(file: File) {
+  async function openPdf(file: File) {
     setPdfFile(file);
     setSource("pdf");
     setExplained(false);
     setPdfSelection(null);
     setQaEntries([]);
     setNote("");
-    notify("PDF added to your library", file.name);
+    setActiveView("library");
+    try {
+      await pdfStore.write(learnerId, file);
+      notify("PDF saved to your private library", `${file.name} will be restored after refresh`);
+    } catch {
+      notify("PDF opened for this session", "Browser storage could not persist the file");
+    }
+  }
+
+  async function openMemory(query = memoryQuery) {
+    setActiveView("memory");
+    setMemoryOpen(true);
+    setMemoryLoading(true);
+    try {
+      const result = await memoryAdapter.retrieve(learnerId, query);
+      setMemoryEvidence(result.evidence);
+      setSyncState("connected");
+    } catch {
+      setMemoryEvidence([]);
+      setSyncState("offline");
+    } finally {
+      setMemoryLoading(false);
+    }
   }
 
   function explainSelection() {
@@ -436,9 +468,11 @@ export default function GlossApp() {
     memoryAdapter.reset(learnerId);
     noteStore.write(learnerId, []);
     graphStore.write(learnerId, { nodes: [], edges: [] });
+    void pdfStore.clear(learnerId);
     setMemory(initialMemory(learnerId));
     setNotes([]);
     setKnowledgeGraph({ nodes: [], edges: [] });
+    setPdfFile(null);
     setSource("cortical");
     setExplained(true);
     setConfirmed(false);
@@ -447,6 +481,7 @@ export default function GlossApp() {
     setPdfSelection(null);
     setSyncState("connected");
     setOpenMenu(null);
+    setActiveView("library");
     notify("Demo reset", "Local memory cleared for this learner");
   }
 
@@ -455,6 +490,7 @@ export default function GlossApp() {
     setLearner(next);
     setSignInOpen(false);
     setSource("cortical");
+    setActiveView("library");
     setExplained(true);
     setShowGraph(false);
     setQaEntries([]);
@@ -472,6 +508,7 @@ export default function GlossApp() {
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   const focusGraph = useCallback(() => {
+    setActiveView("knowledge");
     setGraphTab("graph");
     graphPaneRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
@@ -479,12 +516,29 @@ export default function GlossApp() {
   return (
     <main className="app-shell" onClick={() => setOpenMenu(null)}>
       <Sidebar
+        activeView={activeView}
         source={source}
         pdfName={pdfFile?.name ?? null}
         learner={learner}
         onOpenPaper={openPaper}
-        onOpenPdf={() => pdfFile && setSource("pdf")}
+        onOpenPdf={() => {
+          if (pdfFile) {
+            setSource("pdf");
+            setActiveView("library");
+          }
+        }}
         onUpload={openPdf}
+        onKnowledge={() => {
+          setActiveView("knowledge");
+          setGraphTab("graph");
+          window.setTimeout(() => graphPaneRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
+        }}
+        onNotes={() => {
+          setActiveView("notes");
+          setExplained(true);
+          setNotePanelTick((tick) => tick + 1);
+        }}
+        onMemory={() => void openMemory()}
         onReset={resetDemo}
         confirmed={confirmed}
         syncState={syncState}
@@ -504,6 +558,7 @@ export default function GlossApp() {
           onMarkRead={() => setNotifications((current) => current.map((item) => ({ ...item, read: true })))}
           onExplain={() => (source === "pdf" ? setExplained(true) : explainSelection())}
           onTakeNote={() => {
+            setActiveView("notes");
             setExplained(true);
             setNoteFocusTick((tick) => tick + 1);
           }}
@@ -535,6 +590,7 @@ export default function GlossApp() {
             notes={notes}
             noteSyncing={noteSyncing}
             noteFocusTick={noteFocusTick}
+            notePanelTick={notePanelTick}
             qaEntries={qaEntries}
             feedback={feedback}
             onFeedback={setFeedbackValue}
@@ -542,6 +598,7 @@ export default function GlossApp() {
             onNote={setNote}
             onSaveNote={(content, id) => void saveNote(content, id)}
             onDeleteNote={(savedNote) => void deleteNote(savedNote)}
+            onPanelChange={(panel) => setActiveView(panel === "notes" ? "notes" : "library")}
             onConfirm={() => void confirmUnderstanding()}
             onClose={() => setExplained(false)}
           />
@@ -552,7 +609,10 @@ export default function GlossApp() {
             notes={notes}
             mastered={memory.mastered}
             activeTab={graphTab}
-            onTab={setGraphTab}
+            onTab={(tab) => {
+              setActiveView("knowledge");
+              setGraphTab(tab);
+            }}
             crossPaper={showGraph}
           />
         </div>
@@ -584,6 +644,23 @@ export default function GlossApp() {
           onSubmit={switchLearner}
         />
       )}
+      {memoryOpen && (
+        <MemoryModal
+          learnerName={learner?.name ?? "Learner"}
+          mastered={memory.mastered}
+          notes={notes}
+          evidence={memoryEvidence}
+          query={memoryQuery}
+          loading={memoryLoading}
+          syncState={syncState}
+          onQuery={setMemoryQuery}
+          onSearch={() => void openMemory(memoryQuery)}
+          onClose={() => {
+            setMemoryOpen(false);
+            setActiveView("library");
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -591,24 +668,32 @@ export default function GlossApp() {
 /* ── sidebar ─────────────────────────────────────────────────────── */
 
 function Sidebar({
+  activeView,
   source,
   pdfName,
   learner,
   onOpenPaper,
   onOpenPdf,
   onUpload,
+  onKnowledge,
+  onNotes,
+  onMemory,
   onReset,
   confirmed,
   syncState,
   collapsed,
   onToggle,
 }: {
+  activeView: NavView;
   source: SourceId;
   pdfName: string | null;
   learner: Learner | null;
   onOpenPaper: (paper: PaperId) => void;
   onOpenPdf: () => void;
   onUpload: (file: File) => void;
+  onKnowledge: () => void;
+  onNotes: () => void;
+  onMemory: () => void;
   onReset: () => void;
   confirmed: boolean;
   syncState: MemorySyncState;
@@ -639,10 +724,10 @@ function Sidebar({
         </button>
       </div>
       <nav className="primary-nav" aria-label="Primary navigation">
-        <button className="active"><Library size={17} /> Library</button>
-        <button><Network size={17} /> Knowledge</button>
-        <button><StickyNote size={17} /> Notes</button>
-        <button><BrainCircuit size={17} /> Memory</button>
+        <button className={activeView === "library" ? "active" : ""} onClick={() => source === "pdf" ? onOpenPdf() : onOpenPaper(source as PaperId)}><Library size={17} /> Library</button>
+        <button className={activeView === "knowledge" ? "active" : ""} onClick={onKnowledge}><Network size={17} /> Knowledge</button>
+        <button className={activeView === "notes" ? "active" : ""} onClick={onNotes}><StickyNote size={17} /> Notes</button>
+        <button className={activeView === "memory" ? "active" : ""} onClick={onMemory}><BrainCircuit size={17} /> Memory</button>
       </nav>
 
       <p className="side-label">Your papers</p>
@@ -922,6 +1007,7 @@ function ExplanationPane({
   notes,
   noteSyncing,
   noteFocusTick,
+  notePanelTick,
   qaEntries,
   feedback,
   onFeedback,
@@ -929,6 +1015,7 @@ function ExplanationPane({
   onNote,
   onSaveNote,
   onDeleteNote,
+  onPanelChange,
   onConfirm,
   onClose,
 }: {
@@ -942,6 +1029,7 @@ function ExplanationPane({
   notes: ReadingNote[];
   noteSyncing: boolean;
   noteFocusTick: number;
+  notePanelTick: number;
   qaEntries: QAEntry[];
   feedback: Record<string, FeedbackValue>;
   onFeedback: (key: string, value: FeedbackValue) => void;
@@ -949,6 +1037,7 @@ function ExplanationPane({
   onNote: (note: string) => void;
   onSaveNote: (content: string, id?: string) => void;
   onDeleteNote: (note: ReadingNote) => void;
+  onPanelChange: (panel: "explain" | "notes") => void;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -971,6 +1060,12 @@ function ExplanationPane({
   }, [noteFocusTick]);
 
   useEffect(() => {
+    if (notePanelTick > 0) {
+      window.setTimeout(() => setActivePanel("notes"), 0);
+    }
+  }, [notePanelTick]);
+
+  useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [qaEntries.length, pending]);
 
@@ -986,8 +1081,8 @@ function ExplanationPane({
   return (
     <section className="explanation-pane">
       <div className="panel-tabs">
-        <button className={activePanel === "explain" ? "active" : ""} onClick={() => setActivePanel("explain")}>Explain</button>
-        <button className={activePanel === "notes" ? "active" : ""} onClick={() => setActivePanel("notes")}>Notes ({notes.length})</button>
+        <button className={activePanel === "explain" ? "active" : ""} onClick={() => { setActivePanel("explain"); onPanelChange("explain"); }}>Explain</button>
+        <button className={activePanel === "notes" ? "active" : ""} onClick={() => { setActivePanel("notes"); onPanelChange("notes"); }}>Notes ({notes.length})</button>
         <span />
         <button onClick={onClose} aria-label="Close panel"><X size={16} /></button>
       </div>
@@ -1436,6 +1531,88 @@ function ProgressBar({
         {crossPaper && <span className="recent-chip purple">TD error</span>}
       </div>
     </footer>
+  );
+}
+
+/* ── EverOS memory browser ───────────────────────────────────────── */
+
+function MemoryModal({
+  learnerName,
+  mastered,
+  notes,
+  evidence,
+  query,
+  loading,
+  syncState,
+  onQuery,
+  onSearch,
+  onClose,
+}: {
+  learnerName: string;
+  mastered: string[];
+  notes: ReadingNote[];
+  evidence: string[];
+  query: string;
+  loading: boolean;
+  syncState: MemorySyncState;
+  onQuery: (query: string) => void;
+  onSearch: () => void;
+  onClose: () => void;
+}) {
+  const conceptName = (id: string) =>
+    ({
+      reward_signal: "Reward signal",
+      td_error: "Temporal-difference error",
+    })[id] ?? id.replace(/^pdf:/, "").replace(/[_-]/g, " ");
+
+  return (
+    <div className="overlay center" role="dialog" aria-label="EverOS learner memory" onClick={onClose}>
+      <section className="memory-modal" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div><BrainCircuit size={18} /><span><strong>{learnerName}’s memory</strong><small>EverOS learner profile</small></span></div>
+          <button aria-label="Close memory" onClick={onClose}><X size={16} /></button>
+        </header>
+        <div className="memory-health">
+          <i className={syncState === "offline" ? "offline" : ""} />
+          {syncState === "offline" ? "EverOS unavailable · showing local memory" : "Connected to EverOS"}
+        </div>
+        <div className="memory-search">
+          <Search size={14} />
+          <input
+            value={query}
+            placeholder="Search confirmed concepts, notes, or past questions"
+            onChange={(event) => onQuery(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && onSearch()}
+          />
+          <button disabled={!query.trim() || loading} onClick={onSearch}>
+            {loading ? <Loader2 className="spin" size={14} /> : "Search"}
+          </button>
+        </div>
+        <div className="memory-columns">
+          <div>
+            <p className="memory-label">Confirmed understanding</p>
+            {mastered.length ? mastered.map((id) => (
+              <div className="memory-result compact" key={id}><Check size={13} /><span><strong>{conceptName(id)}</strong><small>Confirmed by {learnerName}</small></span></div>
+            )) : <p className="memory-empty-copy">No concepts confirmed yet.</p>}
+            <p className="memory-label">Reading notes</p>
+            {notes.length ? notes.slice(0, 8).map((note) => (
+              <div className="memory-result compact" key={note.id}><StickyNote size={13} /><span><strong>{note.content.slice(0, 80)}</strong><small>{note.sourceTitle}</small></span></div>
+            )) : <p className="memory-empty-copy">No notes saved yet.</p>}
+          </div>
+          <div>
+            <p className="memory-label">EverOS retrieval</p>
+            {loading ? (
+              <div className="memory-loading"><Loader2 className="spin" size={18} /> Searching hybrid memory…</div>
+            ) : evidence.length ? evidence.map((item, index) => (
+              <article className="memory-result" key={`${index}-${item.slice(0, 20)}`}>
+                <BrainCircuit size={14} />
+                <p>{item.slice(0, 600)}</p>
+              </article>
+            )) : <p className="memory-empty-copy">No remote evidence matched this search. Try a concept or paper title.</p>}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
