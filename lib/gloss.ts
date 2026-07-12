@@ -37,6 +37,24 @@ export type QAEntry = {
   error?: boolean;
 };
 
+export type ExplainedConcept = {
+  id: string;
+  learnerId: string;
+  phrase: string;
+  sourceTitle: string;
+  page?: number;
+  visits: number;
+  createdAt: number;
+  updatedAt: number;
+  thread: QAEntry[];
+};
+
+export type ConceptMatch = {
+  start: number;
+  end: number;
+  concept: ExplainedConcept;
+};
+
 export type AppNotification = {
   id: string;
   text: string;
@@ -222,6 +240,82 @@ export const feedbackStore = {
     writeJSON(storageKey("feedback", learnerId), feedback);
   },
 };
+
+/* ── explained concepts (familiarity highlights) ─────────────────── */
+
+export const conceptStore = {
+  read(learnerId: string): ExplainedConcept[] {
+    return readJSON(storageKey("concepts", learnerId), []);
+  },
+  write(learnerId: string, concepts: ExplainedConcept[]) {
+    writeJSON(storageKey("concepts", learnerId), concepts);
+  },
+};
+
+// "chains" → "chain", "classes" → "class", "houses" → "house"; guards keep
+// short words ("gas") and latinate endings ("virus", "analysis") intact.
+function stemToken(token: string): string {
+  if (token.length > 4 && /(?:ss|sh|ch|x|z)es$/.test(token)) return token.slice(0, -2);
+  if (
+    token.length > 3 &&
+    token.endsWith("s") &&
+    !token.endsWith("ss") &&
+    !token.endsWith("us") &&
+    !token.endsWith("is")
+  ) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+function phraseTokens(phrase: string): string[] {
+  return phrase
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function normalizeConceptPhrase(phrase: string): string {
+  return phraseTokens(phrase).map(stemToken).join(" ");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function conceptPattern(phrase: string): RegExp | null {
+  const tokens = phraseTokens(phrase);
+  if (!tokens.length) return null;
+  const body = tokens
+    .map((token) => `${escapeRegExp(stemToken(token))}(?:e?s)?`)
+    .join("[^\\p{L}\\p{N}]+");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, "giu");
+}
+
+/** Non-overlapping matches of every concept phrase in `text`, in document order. */
+export function findConceptMatches(text: string, concepts: ExplainedConcept[]): ConceptMatch[] {
+  const matches: ConceptMatch[] = [];
+  for (const concept of concepts) {
+    const pattern = conceptPattern(concept.phrase);
+    if (!pattern) continue;
+    for (const match of text.matchAll(pattern)) {
+      if (!match[0]) continue;
+      matches.push({ start: match.index, end: match.index + match[0].length, concept });
+    }
+  }
+  matches.sort((a, b) => a.start - b.start || b.end - a.end);
+  const kept: ConceptMatch[] = [];
+  let lastEnd = 0;
+  for (const match of matches) {
+    if (match.start >= lastEnd) {
+      kept.push(match);
+      lastEnd = match.end;
+    }
+  }
+  return kept;
+}
 
 /* ── notes + AI-derived knowledge graph ─────────────────────────── */
 

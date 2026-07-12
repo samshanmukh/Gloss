@@ -45,6 +45,7 @@ import {
   AppNotification,
   BASE_CONCEPTS,
   DEFAULT_LEARNER,
+  ExplainedConcept,
   FeedbackValue,
   KnowledgeEdge,
   KnowledgeGraph,
@@ -56,12 +57,15 @@ import {
   READING_GOAL_HOURS,
   ReadingNote,
   SourceId,
+  conceptStore,
   feedbackStore,
+  findConceptMatches,
   formatHours,
   graphStore,
   initialMemory,
   learnerStore,
   memoryAdapter,
+  normalizeConceptPhrase,
   noteStore,
   pdfStore,
   readingTimeStore,
@@ -70,6 +74,7 @@ import {
 type GraphTab = "graph" | "timeline" | "list";
 type OpenMenu = "bell" | "more" | "avatar" | null;
 type NavView = "library" | "knowledge" | "notes" | "memory";
+type ReadingPanel = "explain" | "notes";
 
 const PAPER_COPY = {
   cortical: {
@@ -84,6 +89,7 @@ const PAPER_COPY = {
     caption: "Figure 2 · Closed-loop interaction between the neural culture and its environment.",
     explanation:
       "Think of the odor value like the warmth in a game of hot-and-cold. One number tells the agent whether its latest move brought it closer to the goal.",
+    conceptPhrase: "odor",
   },
   td: {
     kicker: "3.2 · Temporal-difference learning",
@@ -97,6 +103,7 @@ const PAPER_COPY = {
     caption: "Figure 3 · The TD error compares predicted and received outcomes to update our estimates.",
     explanation:
       "You already understood the reward signal from the Cortical Labs paper — the value that tells the agent whether an action went well. TD error is the surprise: the gap between the reward it expected and what it actually got. It nudges the next prediction toward reality.",
+    conceptPhrase: "TD error",
   },
 } as const;
 
@@ -114,25 +121,27 @@ export default function GlossApp() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfSelection, setPdfSelection] = useState<{ text: string; page: number } | null>(null);
   const [memory, setMemory] = useState(initialMemory(DEFAULT_LEARNER.id));
-  const [explained, setExplained] = useState(true);
+  const [readingPanel, setReadingPanel] = useState<ReadingPanel | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [graphTab, setGraphTab] = useState<GraphTab>("graph");
-  const [showGraph, setShowGraph] = useState(false);
+  const [crossPaperConnected, setCrossPaperConnected] = useState(false);
   const [note, setNote] = useState("");
   const [notes, setNotes] = useState<ReadingNote[]>([]);
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph>({ nodes: [], edges: [] });
   const [noteSyncing, setNoteSyncing] = useState(false);
   const [noteFocusTick, setNoteFocusTick] = useState(0);
-  const [notePanelTick, setNotePanelTick] = useState(0);
   const [syncState, setSyncState] = useState<MemorySyncState>("checking");
   const [qaEntries, setQaEntries] = useState<QAEntry[]>([]);
+  const [concepts, setConcepts] = useState<ExplainedConcept[]>([]);
+  // Synchronous mirror of `concepts` so find-or-create/increment logic never
+  // reads a stale render snapshot between batched updates.
+  const conceptsRef = useRef<ExplainedConcept[]>([]);
+  const [activeConceptId, setActiveConceptId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Record<string, FeedbackValue>>({});
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [readingSeconds, setReadingSeconds] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const graphPaneRef = useRef<HTMLElement>(null);
   const learnerId = learner?.id ?? DEFAULT_LEARNER.id;
 
   const notify = useCallback((text: string, detail?: string) => {
@@ -150,6 +159,7 @@ export default function GlossApp() {
       loadLearner(storedLearner);
     });
     return () => window.cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only bootstrap of the stored learner
   }, []);
 
   function loadLearner(active: Learner) {
@@ -157,6 +167,8 @@ export default function GlossApp() {
     setMemory(stored);
     setConfirmed(stored.mastered.includes("reward_signal"));
     setFeedback(feedbackStore.read(active.id));
+    replaceConcepts(conceptStore.read(active.id));
+    setActiveConceptId(null);
     setNotes(noteStore.read(active.id));
     setKnowledgeGraph(graphStore.read(active.id));
     setReadingSeconds(readingTimeStore.read(active.id));
@@ -207,26 +219,14 @@ export default function GlossApp() {
   }, []);
 
   const personalized = source === "td" && memory.mastered.includes("reward_signal");
-  const concepts = useMemo(
-    () =>
-      BASE_CONCEPTS.map((concept) => {
-        if (concept.id === "reward" && confirmed) return { ...concept, status: "mastered" as const };
-        if (concept.id === "td-error" && memory.mastered.includes("td_error"))
-          return { ...concept, status: "mastered" as const };
-        if (concept.id === "td-error" && personalized && explained)
-          return { ...concept, status: "learning" as const };
-        return concept;
-      }),
-    [confirmed, explained, personalized, memory.mastered],
-  );
-
   async function openPaper(next: PaperId) {
     setActiveView("library");
     setSource(next);
-    setExplained(false);
+    setReadingPanel(null);
     setPdfSelection(null);
     setQaEntries([]);
-    setShowGraph(next === "td" && memory.mastered.includes("reward_signal"));
+    setActiveConceptId(null);
+    setCrossPaperConnected(next === "td" && memory.mastered.includes("reward_signal"));
     setNote("");
     if (next === "td") {
       setSyncState("checking");
@@ -254,9 +254,10 @@ export default function GlossApp() {
   async function openPdf(file: File) {
     setPdfFile(file);
     setSource("pdf");
-    setExplained(false);
+    setReadingPanel(null);
     setPdfSelection(null);
     setQaEntries([]);
+    setActiveConceptId(null);
     setNote("");
     setActiveView("library");
     try {
@@ -267,22 +268,107 @@ export default function GlossApp() {
     }
   }
 
+  function replaceConcepts(next: ExplainedConcept[]) {
+    conceptsRef.current = next;
+    setConcepts(next);
+  }
+
+  function updateConcepts(mutate: (current: ExplainedConcept[]) => ExplainedConcept[]) {
+    const next = mutate(conceptsRef.current);
+    replaceConcepts(next);
+    conceptStore.write(learnerId, next);
+  }
+
+  /** Find-or-create the persistent concept for a phrase; revisits bump the counter. */
+  function rememberConcept(phrase: string, context: { sourceTitle: string; page?: number }): ExplainedConcept {
+    const normalized = normalizeConceptPhrase(phrase);
+    const existing = conceptsRef.current.find((concept) => normalizeConceptPhrase(concept.phrase) === normalized);
+    if (existing) {
+      const visited = { ...existing, visits: existing.visits + 1, updatedAt: Date.now() };
+      updateConcepts((current) => current.map((concept) => (concept.id === visited.id ? visited : concept)));
+      return visited;
+    }
+    const created: ExplainedConcept = {
+      id: nextId("concept"),
+      learnerId,
+      phrase: phrase.trim(),
+      sourceTitle: context.sourceTitle,
+      page: context.page,
+      visits: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      thread: [],
+    };
+    updateConcepts((current) => [...current, created]);
+    return created;
+  }
+
+  function appendToConceptThread(conceptId: string, entry: QAEntry) {
+    updateConcepts((current) =>
+      current.map((concept) =>
+        concept.id === conceptId
+          ? { ...concept, thread: [...concept.thread, entry], updatedAt: Date.now() }
+          : concept,
+      ),
+    );
+  }
+
+  /** A familiarity highlight was clicked: reopen that concept's saved conversation. */
+  function openConcept(conceptId: string, page?: number) {
+    const concept = conceptsRef.current.find((item) => item.id === conceptId);
+    if (!concept) return;
+    updateConcepts((current) =>
+      current.map((item) =>
+        item.id === conceptId ? { ...item, visits: item.visits + 1, updatedAt: Date.now() } : item,
+      ),
+    );
+    // Keep the visible thread when re-opening the already-active concept so an
+    // in-flight "Thinking…" entry isn't dropped mid-answer.
+    if (activeConceptId !== conceptId) setQaEntries(concept.thread);
+    setActiveConceptId(conceptId);
+    if (source === "pdf") setPdfSelection({ text: concept.phrase, page: page ?? concept.page ?? 1 });
+    setReadingPanel("explain");
+    setActiveView("library");
+  }
+
   function explainSelection() {
-    setExplained(true);
+    setReadingPanel("explain");
+    if (source !== "pdf") {
+      const copy = PAPER_COPY[source];
+      const concept = rememberConcept(copy.conceptPhrase, {
+        sourceTitle: PAPER_META[source].title,
+        page: 12,
+      });
+      if (activeConceptId !== concept.id) setQaEntries(concept.thread);
+      setActiveConceptId(concept.id);
+    }
     if (source === "td" && memory.mastered.includes("reward_signal")) {
-      window.setTimeout(() => setShowGraph(true), 400);
+      window.setTimeout(() => setCrossPaperConnected(true), 400);
     }
   }
 
   function onPdfSelect(text: string, page: number) {
+    const concept = rememberConcept(text, { sourceTitle: pdfFile?.name ?? "Uploaded PDF", page });
     setPdfSelection({ text, page });
-    setExplained(true);
-    setQaEntries([]);
-    void askQuestion("Explain this passage in simple terms.", { text, page });
+    setReadingPanel("explain");
+    if (activeConceptId !== concept.id) setQaEntries(concept.thread);
+    setActiveConceptId(concept.id);
+    if (concept.thread.length === 0) {
+      void askQuestion("Explain this passage in simple terms.", {
+        selection: { text, page },
+        conceptId: concept.id,
+        thread: concept.thread,
+      });
+    }
   }
 
-  async function askQuestion(question: string, selection?: { text: string; page: number }) {
-    const active = selection ?? pdfSelection;
+  async function askQuestion(
+    question: string,
+    options?: { selection?: { text: string; page: number }; conceptId?: string; thread?: QAEntry[] },
+  ) {
+    const active = options?.selection ?? pdfSelection;
+    const conceptId = options?.conceptId ?? activeConceptId;
+    const priorEntries = options?.thread ?? qaEntries;
     const entry: QAEntry = { id: nextId("qa"), question, answer: "", pending: true };
     setQaEntries((current) => [...current, entry]);
 
@@ -294,7 +380,7 @@ export default function GlossApp() {
       source === "pdf"
         ? `${pdfFile?.name ?? "Uploaded PDF"} (page ${active?.page ?? "?"})`
         : PAPER_META[source as PaperId].title;
-    const history = qaEntries
+    const history = priorEntries
       .filter((item) => !item.pending && !item.error)
       .flatMap((item) => [
         { role: "user" as const, content: item.question },
@@ -306,6 +392,7 @@ export default function GlossApp() {
       setQaEntries((current) =>
         current.map((item) => (item.id === entry.id ? { ...item, answer, pending: false } : item)),
       );
+      if (conceptId) appendToConceptThread(conceptId, { ...entry, answer, pending: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : "The tutor is unavailable right now.";
       setQaEntries((current) =>
@@ -350,7 +437,7 @@ export default function GlossApp() {
       notify("Saved on this device", "EverOS is unreachable — memory kept locally");
     }
     if (source === "td") {
-      window.setTimeout(() => setShowGraph(true), 300);
+      window.setTimeout(() => setCrossPaperConnected(true), 300);
     }
   }
 
@@ -449,15 +536,18 @@ export default function GlossApp() {
     memoryAdapter.reset(learnerId);
     noteStore.write(learnerId, []);
     graphStore.write(learnerId, { nodes: [], edges: [] });
+    conceptStore.write(learnerId, []);
     void pdfStore.clear(learnerId);
     setMemory(initialMemory(learnerId));
+    replaceConcepts([]);
+    setActiveConceptId(null);
     setNotes([]);
     setKnowledgeGraph({ nodes: [], edges: [] });
     setPdfFile(null);
     setSource("cortical");
-    setExplained(true);
+    setReadingPanel(null);
     setConfirmed(false);
-    setShowGraph(false);
+    setCrossPaperConnected(false);
     setQaEntries([]);
     setPdfSelection(null);
     setSyncState("connected");
@@ -472,8 +562,8 @@ export default function GlossApp() {
     setSignInOpen(false);
     setSource("cortical");
     setActiveView("library");
-    setExplained(true);
-    setShowGraph(false);
+    setReadingPanel(null);
+    setCrossPaperConnected(false);
     setQaEntries([]);
     setNotifications([]);
     loadLearner(next);
@@ -488,11 +578,15 @@ export default function GlossApp() {
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
-  const focusGraph = useCallback(() => {
+  function openKnowledge() {
     setActiveView("knowledge");
-    setGraphTab("graph");
-    graphPaneRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
+    window.location.assign("/knowledge");
+  }
+
+  function closeReadingPanel() {
+    setReadingPanel(null);
+    setActiveView("library");
+  }
 
   return (
     <main className="app-shell" onClick={() => setOpenMenu(null)}>
@@ -506,17 +600,16 @@ export default function GlossApp() {
           if (pdfFile) {
             setSource("pdf");
             setActiveView("library");
+            setReadingPanel(null);
+            setPdfSelection(null);
+            setQaEntries([]);
           }
         }}
         onUpload={openPdf}
-        onKnowledge={() => {
-          setActiveView("knowledge");
-          window.location.assign("/knowledge");
-        }}
+        onKnowledge={openKnowledge}
         onNotes={() => {
           setActiveView("notes");
-          setExplained(true);
-          setNotePanelTick((tick) => tick + 1);
+          setReadingPanel("notes");
         }}
         onMemory={() => {
           setActiveView("memory");
@@ -539,10 +632,10 @@ export default function GlossApp() {
           openMenu={openMenu}
           onMenu={setOpenMenu}
           onMarkRead={() => setNotifications((current) => current.map((item) => ({ ...item, read: true })))}
-          onExplain={() => (source === "pdf" ? setExplained(true) : explainSelection())}
+          onExplain={() => setReadingPanel("explain")}
           onTakeNote={() => {
             setActiveView("notes");
-            setExplained(true);
+            setReadingPanel("explain");
             setNoteFocusTick((tick) => tick + 1);
           }}
           onSearch={() => setPaletteOpen(true)}
@@ -550,59 +643,64 @@ export default function GlossApp() {
           onSignOut={signOut}
           onSwitchLearner={() => setSignInOpen(true)}
         />
-        <div className="reading-grid">
+        <div className={`reading-grid ${readingPanel ? "with-explanation" : "paper-only"}`}>
           {source === "pdf" && pdfFile ? (
-            <PdfReader key={`${pdfFile.name}-${pdfFile.size}`} file={pdfFile} onSelectText={onPdfSelect} />
+            <PdfReader
+              key={`${pdfFile.name}-${pdfFile.size}`}
+              file={pdfFile}
+              concepts={concepts}
+              onSelectText={onPdfSelect}
+              onConceptClick={openConcept}
+            />
           ) : (
-            <PaperPane paper={source as PaperId} explained={explained} onExplain={explainSelection} />
+            <PaperPane
+              paper={source as PaperId}
+              explained={readingPanel === "explain"}
+              concepts={concepts}
+              onExplain={explainSelection}
+              onConceptClick={openConcept}
+            />
           )}
-          <ExplanationPane
-            source={source}
-            pdfSelection={pdfSelection}
-            explained={explained}
-            personalized={personalized}
-            confirmed={
-              source === "cortical"
-                ? confirmed
-                : source === "td"
-                  ? memory.mastered.includes("td_error")
-                  : memory.mastered.some((id) => id.startsWith("pdf:"))
-            }
-            syncState={syncState}
-            note={note}
-            notes={notes}
-            noteSyncing={noteSyncing}
-            noteFocusTick={noteFocusTick}
-            notePanelTick={notePanelTick}
-            qaEntries={qaEntries}
-            feedback={feedback}
-            onFeedback={setFeedbackValue}
-            onAsk={(question) => void askQuestion(question)}
-            onNote={setNote}
-            onSaveNote={(content, id) => void saveNote(content, id)}
-            onDeleteNote={(savedNote) => void deleteNote(savedNote)}
-            onPanelChange={(panel) => setActiveView(panel === "notes" ? "notes" : "library")}
-            onConfirm={() => void confirmUnderstanding()}
-            onClose={() => setExplained(false)}
-          />
-          <GraphPane
-            paneRef={graphPaneRef}
-            concepts={concepts}
-            dynamicGraph={knowledgeGraph}
-            notes={notes}
-            mastered={memory.mastered}
-            activeTab={graphTab}
-            onTab={(tab) => {
-              setActiveView("knowledge");
-              setGraphTab(tab);
-            }}
-            crossPaper={showGraph}
-          />
+          {readingPanel && (
+            <ExplanationPane
+              source={source}
+              pdfSelection={pdfSelection}
+              activeConcept={concepts.find((concept) => concept.id === activeConceptId) ?? null}
+              explained={readingPanel === "explain"}
+              activePanel={readingPanel}
+              personalized={personalized}
+              confirmed={
+                source === "cortical"
+                  ? confirmed
+                  : source === "td"
+                    ? memory.mastered.includes("td_error")
+                    : memory.mastered.some((id) => id.startsWith("pdf:"))
+              }
+              syncState={syncState}
+              note={note}
+              notes={notes}
+              noteSyncing={noteSyncing}
+              noteFocusTick={noteFocusTick}
+              qaEntries={qaEntries}
+              feedback={feedback}
+              onFeedback={setFeedbackValue}
+              onAsk={(question) => void askQuestion(question)}
+              onNote={setNote}
+              onSaveNote={(content, id) => void saveNote(content, id)}
+              onDeleteNote={(savedNote) => void deleteNote(savedNote)}
+              onPanelChange={(panel) => {
+                setReadingPanel(panel);
+                setActiveView(panel === "notes" ? "notes" : "library");
+              }}
+              onConfirm={() => void confirmUnderstanding()}
+              onClose={closeReadingPanel}
+            />
+          )}
         </div>
         <ProgressBar
           source={source}
           confirmed={confirmed}
-          crossPaper={showGraph}
+          crossPaper={crossPaperConnected}
           masteredCount={memory.mastered.length}
           readingSeconds={readingSeconds}
           learnerName={learner?.name ?? "reader"}
@@ -616,7 +714,7 @@ export default function GlossApp() {
           note={note}
           onClose={() => setPaletteOpen(false)}
           onOpenPaper={(paper) => void openPaper(paper)}
-          onFocusGraph={focusGraph}
+          onFocusGraph={openKnowledge}
         />
       )}
 
@@ -871,14 +969,56 @@ function Header({
 
 /* ── demo paper pane ─────────────────────────────────────────────── */
 
+/** Text with every previously-explained phrase wrapped in a clickable familiarity mark. */
+function ConceptText({
+  text,
+  concepts,
+  onConceptClick,
+}: {
+  text: string;
+  concepts: ExplainedConcept[];
+  onConceptClick: (conceptId: string) => void;
+}) {
+  const matches = useMemo(() => findConceptMatches(text, concepts), [text, concepts]);
+  if (!matches.length) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.start > cursor) parts.push(text.slice(cursor, match.start));
+    parts.push(
+      <mark
+        key={`${match.concept.id}-${match.start}`}
+        className="concept-highlight"
+        role="button"
+        tabIndex={0}
+        title={`You asked about “${match.concept.phrase.slice(0, 80)}” before — click to revisit`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onConceptClick(match.concept.id);
+        }}
+        onKeyDown={(event) => event.key === "Enter" && onConceptClick(match.concept.id)}
+      >
+        {text.slice(match.start, match.end)}
+      </mark>,
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
+
 function PaperPane({
   paper,
   explained,
+  concepts,
   onExplain,
+  onConceptClick,
 }: {
   paper: PaperId;
   explained: boolean;
+  concepts: ExplainedConcept[];
   onExplain: () => void;
+  onConceptClick: (conceptId: string) => void;
 }) {
   const copy = PAPER_COPY[paper];
   return (
@@ -891,14 +1031,14 @@ function PaperPane({
       <div className="paper-page">
         <p className="paper-kicker">{copy.kicker}</p>
         <h1>{copy.title}</h1>
-        <p>{copy.intro}</p>
+        <p><ConceptText text={copy.intro} concepts={concepts} onConceptClick={onConceptClick} /></p>
         <button className={`selected-passage ${explained ? "explained" : ""}`} onClick={onExplain}>
           {copy.selection}
           {!explained && <span className="explain-chip"><Sparkles size={13} /> Explain this</span>}
         </button>
-        <p>{copy.after}</p>
-        {paper === "td" ? <TDFormula /> : <ClosedLoopFigure />}
-        <small className="figure-caption">{copy.caption}</small>
+        <p><ConceptText text={copy.after} concepts={concepts} onConceptClick={onConceptClick} /></p>
+        {paper === "td" ? <TDFormula /> : <ClosedLoopFigure concepts={concepts} onConceptClick={onConceptClick} />}
+        <small className="figure-caption"><ConceptText text={copy.caption} concepts={concepts} onConceptClick={onConceptClick} /></small>
         <div className="paper-footnote">
           <span>Gloss demo excerpt · Page 12</span>
           <button onClick={onExplain}><Sparkles size={14} /> Ask about this page</button>
@@ -922,12 +1062,21 @@ function TDFormula() {
   );
 }
 
-function ClosedLoopFigure() {
+function ClosedLoopFigure({
+  concepts,
+  onConceptClick,
+}: {
+  concepts: ExplainedConcept[];
+  onConceptClick: (conceptId: string) => void;
+}) {
   return (
     <div className="paper-figure loop-figure">
       <div className="culture"><BrainCircuit size={30} /><strong>Neural culture</strong><span>chooses an action</span></div>
       <div className="loop-arrows"><span>action →</span><span>← scalar feedback</span></div>
-      <div className="culture environment"><Focus size={30} /><strong>Environment</strong><span>returns “odor” value</span></div>
+      <div className="culture environment">
+        <Focus size={30} /><strong>Environment</strong>
+        <span><ConceptText text="returns “odor” value" concepts={concepts} onConceptClick={onConceptClick} /></span>
+      </div>
     </div>
   );
 }
@@ -968,7 +1117,9 @@ function FeedbackRow({
 function ExplanationPane({
   source,
   pdfSelection,
+  activeConcept,
   explained,
+  activePanel,
   personalized,
   confirmed,
   syncState,
@@ -976,7 +1127,6 @@ function ExplanationPane({
   notes,
   noteSyncing,
   noteFocusTick,
-  notePanelTick,
   qaEntries,
   feedback,
   onFeedback,
@@ -990,7 +1140,9 @@ function ExplanationPane({
 }: {
   source: SourceId;
   pdfSelection: { text: string; page: number } | null;
+  activeConcept: ExplainedConcept | null;
   explained: boolean;
+  activePanel: ReadingPanel;
   personalized: boolean;
   confirmed: boolean;
   syncState: MemorySyncState;
@@ -998,7 +1150,6 @@ function ExplanationPane({
   notes: ReadingNote[];
   noteSyncing: boolean;
   noteFocusTick: number;
-  notePanelTick: number;
   qaEntries: QAEntry[];
   feedback: Record<string, FeedbackValue>;
   onFeedback: (key: string, value: FeedbackValue) => void;
@@ -1010,7 +1161,6 @@ function ExplanationPane({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const [activePanel, setActivePanel] = useState<"explain" | "notes">("explain");
   const [question, setQuestion] = useState("");
   const [editingNote, setEditingNote] = useState<ReadingNote | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -1022,17 +1172,10 @@ function ExplanationPane({
   useEffect(() => {
     if (noteFocusTick > 0) {
       window.setTimeout(() => {
-        setActivePanel("explain");
         noteRef.current?.focus();
       }, 0);
     }
   }, [noteFocusTick]);
-
-  useEffect(() => {
-    if (notePanelTick > 0) {
-      window.setTimeout(() => setActivePanel("notes"), 0);
-    }
-  }, [notePanelTick]);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
@@ -1050,8 +1193,8 @@ function ExplanationPane({
   return (
     <section className="explanation-pane">
       <div className="panel-tabs">
-        <button className={activePanel === "explain" ? "active" : ""} onClick={() => { setActivePanel("explain"); onPanelChange("explain"); }}>Explain</button>
-        <button className={activePanel === "notes" ? "active" : ""} onClick={() => { setActivePanel("notes"); onPanelChange("notes"); }}>Notes ({notes.length})</button>
+        <button className={activePanel === "explain" ? "active" : ""} onClick={() => onPanelChange("explain")}>Explain</button>
+        <button className={activePanel === "notes" ? "active" : ""} onClick={() => onPanelChange("notes")}>Notes ({notes.length})</button>
         <span />
         <button onClick={onClose} aria-label="Close panel"><X size={16} /></button>
       </div>
@@ -1121,6 +1264,16 @@ function ExplanationPane({
       ) : (
         <div className="explanation-content">
           <div className="trust-row"><span><Check size={14} /> Grounded in this paper</span><ChevronDown size={14} /></div>
+
+          {activeConcept && activeConcept.visits > 0 && (
+            <div className="familiar-banner pop-in">
+              <Highlighter size={14} />
+              <span>
+                You’ve asked about <strong>“{activeConcept.phrase.slice(0, 60)}{activeConcept.phrase.length > 60 ? "…" : ""}”</strong> before
+                — seen {activeConcept.visits + 1} times now. Your conversation continues below.
+              </span>
+            </div>
+          )}
 
           {isPdf && pdfSelection ? (
             <>
@@ -1216,7 +1369,7 @@ function ExplanationPane({
 
 const GRAPH_WIDTH = 380;
 
-function GraphPane({
+export function GraphPane({
   paneRef,
   concepts,
   dynamicGraph,

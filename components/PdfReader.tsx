@@ -3,21 +3,85 @@
 import { ChevronLeft, ChevronRight, Loader2, Maximize2, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { ConceptMatch, ExplainedConcept, findConceptMatches } from "@/lib/gloss";
 
 const ZOOM_LEVELS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+const MIN_SELECTION_LENGTH = 3;
+
+function clearConceptHighlights(root: HTMLElement) {
+  root.querySelectorAll("mark.concept-highlight").forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize();
+  });
+}
+
+// A phrase can span several absolutely-positioned text-layer spans, so wrap
+// each overlapping text-node slice in its own mark. Matches are processed
+// last-to-first so splitText never invalidates earlier offsets.
+function wrapMatch(nodes: Array<{ node: Text; start: number }>, match: ConceptMatch) {
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const { node, start } = nodes[i];
+    const length = node.nodeValue?.length ?? 0;
+    if (start >= match.end || start + length <= match.start) continue;
+    const from = Math.max(0, match.start - start);
+    const target = node.splitText(from);
+    target.splitText(Math.min(length, match.end - start) - from);
+    const mark = document.createElement("mark");
+    mark.className = "concept-highlight";
+    mark.dataset.conceptId = match.concept.id;
+    mark.tabIndex = 0;
+    mark.setAttribute("role", "button");
+    mark.setAttribute("aria-label", `Revisit your explanation of “${match.concept.phrase.slice(0, 80)}”`);
+    mark.title = `You asked about “${match.concept.phrase.slice(0, 80)}” before — click to revisit`;
+    target.parentNode?.replaceChild(mark, target);
+    mark.appendChild(target);
+  }
+}
+
+function applyConceptHighlights(root: HTMLElement, concepts: ExplainedConcept[]) {
+  clearConceptHighlights(root);
+  if (!concepts.length) return;
+  // Walk elements too: pdf.js marks line ends with <br>, and adjacent line spans
+  // carry no whitespace of their own — without a separator "…Flow" + "Food…"
+  // would glue into "FlowFood" and word-boundary matching would miss it.
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  const nodes: Array<{ node: Text; start: number }> = [];
+  let text = "";
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if ((node as Element).tagName === "BR") text += "\n";
+      continue;
+    }
+    nodes.push({ node: node as Text, start: text.length });
+    text += node.nodeValue ?? "";
+  }
+  if (!text) return;
+  const matches = findConceptMatches(text, concepts);
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
+    wrapMatch(nodes, matches[i]);
+  }
+}
 
 export default function PdfReader({
   file,
+  concepts,
   onSelectText,
+  onConceptClick,
 }: {
   file: File;
+  concepts: ExplainedConcept[];
   onSelectText: (text: string, page: number) => void;
+  onConceptClick: (conceptId: string, page: number) => void;
 }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
   const [zoomIndex, setZoomIndex] = useState(2);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [selection, setSelection] = useState("");
+  const conceptsRef = useRef(concepts);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const pageWrapRef = useRef<HTMLDivElement>(null);
@@ -88,6 +152,7 @@ export default function PdfReader({
 
     try {
       await Promise.all([task.promise, textLayer.render()]);
+      applyConceptHighlights(textLayerDiv, conceptsRef.current);
     } catch {
       // Render tasks are cancelled when the page or zoom changes quickly.
     }
@@ -97,9 +162,31 @@ export default function PdfReader({
     void renderPage();
   }, [renderPage]);
 
+  useEffect(() => {
+    conceptsRef.current = concepts;
+    if (textLayerRef.current) applyConceptHighlights(textLayerRef.current, concepts);
+  }, [concepts]);
+
   function captureSelection() {
     const text = window.getSelection()?.toString().trim() ?? "";
-    setSelection(text.length >= 12 ? text : "");
+    setSelection(text.length >= MIN_SELECTION_LENGTH ? text : "");
+  }
+
+  function handleConceptClick(event: React.MouseEvent) {
+    if (window.getSelection()?.isCollapsed === false) return;
+    const mark = (event.target as HTMLElement).closest?.("mark.concept-highlight");
+    const conceptId = mark?.getAttribute("data-concept-id");
+    if (conceptId) onConceptClick(conceptId, page);
+  }
+
+  function handleConceptKey(event: React.KeyboardEvent) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const mark = (event.target as HTMLElement).closest?.("mark.concept-highlight");
+    const conceptId = mark?.getAttribute("data-concept-id");
+    if (conceptId) {
+      event.preventDefault();
+      onConceptClick(conceptId, page);
+    }
   }
 
   function explainSelection() {
@@ -145,7 +232,7 @@ export default function PdfReader({
         </button>
       </div>
 
-      <div className="pdf-scroll" onMouseUp={captureSelection}>
+      <div className="pdf-scroll" onMouseUp={captureSelection} onClick={handleConceptClick} onKeyDown={handleConceptKey}>
         {status === "loading" && (
           <div className="pdf-status"><Loader2 className="spin" size={18} /> Opening {file.name}…</div>
         )}
