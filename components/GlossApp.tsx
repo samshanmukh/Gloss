@@ -114,7 +114,7 @@ export default function GlossApp() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfSelection, setPdfSelection] = useState<{ text: string; page: number } | null>(null);
   const [memory, setMemory] = useState(initialMemory(DEFAULT_LEARNER.id));
-  const [explained, setExplained] = useState(true);
+  const [explained, setExplained] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [graphTab, setGraphTab] = useState<GraphTab>("graph");
   const [showGraph, setShowGraph] = useState(false);
@@ -268,6 +268,7 @@ export default function GlossApp() {
   }
 
   function explainSelection() {
+    setActiveView("library");
     setExplained(true);
     if (source === "td" && memory.mastered.includes("reward_signal")) {
       window.setTimeout(() => setShowGraph(true), 400);
@@ -276,6 +277,7 @@ export default function GlossApp() {
 
   function onPdfSelect(text: string, page: number) {
     setPdfSelection({ text, page });
+    setActiveView("library");
     setExplained(true);
     setQaEntries([]);
     void askQuestion("Explain this passage in simple terms.", { text, page });
@@ -455,7 +457,7 @@ export default function GlossApp() {
     setKnowledgeGraph({ nodes: [], edges: [] });
     setPdfFile(null);
     setSource("cortical");
-    setExplained(true);
+    setExplained(false);
     setConfirmed(false);
     setShowGraph(false);
     setQaEntries([]);
@@ -472,7 +474,7 @@ export default function GlossApp() {
     setSignInOpen(false);
     setSource("cortical");
     setActiveView("library");
-    setExplained(true);
+    setExplained(false);
     setShowGraph(false);
     setQaEntries([]);
     setNotifications([]);
@@ -489,9 +491,9 @@ export default function GlossApp() {
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   const focusGraph = useCallback(() => {
+    setExplained(false);
     setActiveView("knowledge");
     setGraphTab("graph");
-    graphPaneRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
 
   return (
@@ -505,13 +507,15 @@ export default function GlossApp() {
         onOpenPdf={() => {
           if (pdfFile) {
             setSource("pdf");
+            setExplained(false);
             setActiveView("library");
           }
         }}
         onUpload={openPdf}
         onKnowledge={() => {
+          setExplained(false);
           setActiveView("knowledge");
-          window.location.assign("/knowledge");
+          setGraphTab("graph");
         }}
         onNotes={() => {
           setActiveView("notes");
@@ -539,7 +543,7 @@ export default function GlossApp() {
           openMenu={openMenu}
           onMenu={setOpenMenu}
           onMarkRead={() => setNotifications((current) => current.map((item) => ({ ...item, read: true })))}
-          onExplain={() => (source === "pdf" ? setExplained(true) : explainSelection())}
+          onExplain={explainSelection}
           onTakeNote={() => {
             setActiveView("notes");
             setExplained(true);
@@ -550,54 +554,62 @@ export default function GlossApp() {
           onSignOut={signOut}
           onSwitchLearner={() => setSignInOpen(true)}
         />
-        <div className="reading-grid">
+        <div
+          className={`reading-grid ${
+            activeView === "knowledge" ? "with-graph" : explained ? "with-explanation" : "reader-only"
+          }`}
+        >
           {source === "pdf" && pdfFile ? (
             <PdfReader key={`${pdfFile.name}-${pdfFile.size}`} file={pdfFile} onSelectText={onPdfSelect} />
           ) : (
             <PaperPane paper={source as PaperId} explained={explained} onExplain={explainSelection} />
           )}
-          <ExplanationPane
-            source={source}
-            pdfSelection={pdfSelection}
-            explained={explained}
-            personalized={personalized}
-            confirmed={
-              source === "cortical"
-                ? confirmed
-                : source === "td"
-                  ? memory.mastered.includes("td_error")
-                  : memory.mastered.some((id) => id.startsWith("pdf:"))
-            }
-            syncState={syncState}
-            note={note}
-            notes={notes}
-            noteSyncing={noteSyncing}
-            noteFocusTick={noteFocusTick}
-            notePanelTick={notePanelTick}
-            qaEntries={qaEntries}
-            feedback={feedback}
-            onFeedback={setFeedbackValue}
-            onAsk={(question) => void askQuestion(question)}
-            onNote={setNote}
-            onSaveNote={(content, id) => void saveNote(content, id)}
-            onDeleteNote={(savedNote) => void deleteNote(savedNote)}
-            onPanelChange={(panel) => setActiveView(panel === "notes" ? "notes" : "library")}
-            onConfirm={() => void confirmUnderstanding()}
-            onClose={() => setExplained(false)}
-          />
-          <GraphPane
-            paneRef={graphPaneRef}
-            concepts={concepts}
-            dynamicGraph={knowledgeGraph}
-            notes={notes}
-            mastered={memory.mastered}
-            activeTab={graphTab}
-            onTab={(tab) => {
-              setActiveView("knowledge");
-              setGraphTab(tab);
-            }}
-            crossPaper={showGraph}
-          />
+          {explained && activeView !== "knowledge" && (
+            <ExplanationPane
+              source={source}
+              pdfSelection={pdfSelection}
+              explained={explained}
+              personalized={personalized}
+              confirmed={
+                source === "cortical"
+                  ? confirmed
+                  : source === "td"
+                    ? memory.mastered.includes("td_error")
+                    : memory.mastered.some((id) => id.startsWith("pdf:"))
+              }
+              syncState={syncState}
+              note={note}
+              notes={notes}
+              noteSyncing={noteSyncing}
+              noteFocusTick={noteFocusTick}
+              notePanelTick={notePanelTick}
+              qaEntries={qaEntries}
+              feedback={feedback}
+              onFeedback={setFeedbackValue}
+              onAsk={(question) => void askQuestion(question)}
+              onNote={setNote}
+              onSaveNote={(content, id) => void saveNote(content, id)}
+              onDeleteNote={(savedNote) => void deleteNote(savedNote)}
+              onPanelChange={(panel) => setActiveView(panel === "notes" ? "notes" : "library")}
+              onConfirm={() => void confirmUnderstanding()}
+              onClose={() => {
+                setExplained(false);
+                setActiveView("library");
+              }}
+            />
+          )}
+          {activeView === "knowledge" && (
+            <GraphPane
+              paneRef={graphPaneRef}
+              concepts={concepts}
+              dynamicGraph={knowledgeGraph}
+              notes={notes}
+              mastered={memory.mastered}
+              activeTab={graphTab}
+              onTab={setGraphTab}
+              crossPaper={showGraph}
+            />
+          )}
         </div>
         <ProgressBar
           source={source}
@@ -804,7 +816,7 @@ function Header({
     <header className="topbar">
       <div className="reading-title"><BookOpen size={16} /> Reading: <strong>{title}</strong><ChevronDown size={14} /></div>
       <div className="top-actions">
-        <button className="action-primary" onClick={onExplain}><Sparkles size={14} /> Explain</button>
+        {source !== "pdf" && <button className="action-primary" onClick={onExplain}><Sparkles size={14} /> Explain</button>}
         <button onClick={onTakeNote}><StickyNote size={14} /> Take note</button>
         <div className="menu-anchor">
           <button aria-label="More actions" onClick={(event) => toggle("more", event)}><Ellipsis size={14} /></button>

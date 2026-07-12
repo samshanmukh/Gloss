@@ -159,9 +159,11 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 }
 
 .reading-grid {
-  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(390px, 1.42fr) minmax(325px, 1fr) minmax(300px, .9fr);
+  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr);
   background: #f7f7fb;
 }
+.reading-grid.with-explanation { grid-template-columns: minmax(430px, 1.5fr) minmax(340px, 1fr); }
+.reading-grid.with-graph { grid-template-columns: minmax(430px, 1.5fr) minmax(320px, .9fr); }
 .paper-pane, .explanation-pane, .graph-pane { min-width: 0; overflow: auto; border-right: 1px solid #e3e4ed; }
 .paper-pane { background: linear-gradient(145deg, #f4f4f9, #f8f8fc); }
 .reader-toolbar {
@@ -664,7 +666,8 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 
 @media (max-width: 1180px) {
   .sidebar { width: 196px; flex-basis: 196px; }
-  .reading-grid { grid-template-columns: minmax(370px, 1.25fr) minmax(310px, 1fr) minmax(270px, .85fr); }
+  .reading-grid.with-explanation { grid-template-columns: minmax(370px, 1.25fr) minmax(310px, 1fr); }
+  .reading-grid.with-graph { grid-template-columns: minmax(370px, 1.25fr) minmax(290px, .9fr); }
   .search { display: none; }
   .progress-bar .recent { display: none; }
 }
@@ -681,8 +684,7 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
   .paper-card { justify-content: center; padding: 12px; }
   .paper-card > svg { margin: 0; }
   .workspace { min-height: 100vh; }
-  .reading-grid { grid-template-columns: 1fr 1fr; }
-  .graph-pane { grid-column: 1 / -1; min-height: 430px; border-top: 1px solid var(--line); }
+  .reading-grid.with-explanation, .reading-grid.with-graph { grid-template-columns: 1fr 1fr; }
   .knowledge-canvas { max-width: 440px; margin: auto; }
   .progress-bar { display: none; }
 }
@@ -700,7 +702,7 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
   .paper-pane, .explanation-pane { min-height: 620px; border-right: 0; }
   .paper-page { width: 94%; padding: 28px 24px; }
   .uploaded-pdf-stage { padding-inline: 12px; }
-  .graph-pane { min-height: 430px; }
+  .graph-pane { min-height: 620px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
