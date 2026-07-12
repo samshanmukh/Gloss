@@ -37,6 +37,16 @@ export type QAEntry = {
   error?: boolean;
 };
 
+export type VoiceTutorResponse = {
+  transcript: string;
+  answer: string;
+  audioData: string;
+  provider: string;
+  model: string;
+  memory: { retrieved: boolean; evidenceCount: number; saved: boolean };
+  privacy: { rawAudioStored: false; transcriptStored: boolean };
+};
+
 export type ExplainedConcept = {
   id: string;
   learnerId: string;
@@ -229,6 +239,32 @@ export const memoryAdapter = {
     const result = (await response.json()) as { answer?: string; error?: string };
     if (!response.ok || !result.answer) throw new Error(result.error || "Tutor is unavailable");
     return result.answer;
+  },
+  async askVoice({
+    learnerId,
+    audioBase64,
+    transcript,
+    passage,
+    paperTitle,
+    rememberTranscript,
+  }: {
+    learnerId: string;
+    audioBase64: string;
+    transcript: string;
+    passage: string;
+    paperTitle: string;
+    rememberTranscript: boolean;
+  }): Promise<VoiceTutorResponse> {
+    const response = await fetch("/api/voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ learnerId, audioBase64, transcript, passage, paperTitle, rememberTranscript }),
+    });
+    const result = (await response.json()) as VoiceTutorResponse & { error?: string };
+    if (!response.ok || !result.answer || !result.audioData) {
+      throw new Error(result.error || "Voice tutor is unavailable");
+    }
+    return result;
   },
 };
 

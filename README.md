@@ -16,6 +16,8 @@ Confirmed concepts are written to EverOS and flushed for extraction. Opening the
 
 Every selected passage has a conversational **Ask Gloss** thread. Before each answer, the server retrieves relevant learner memory from EverOS, then sends the source passage, memory, and recent thread to Gemini Flash Lite through Butterbase's OpenAI-compatible AI Gateway. The system prompt strictly separates source evidence from personalization memory and requires the model to state when the passage does not support an answer. Each completed exchange is recorded back to EverOS. The model remains configurable through `BUTTERBASE_MODEL`.
 
+The same thread supports **push-to-talk** questions. `MediaRecorder` captures the microphone, Chrome Speech Recognition provides the reviewable transcript, and the browser converts the recording to 16 kHz WAV before calling `/api/voice`. The edge route retrieves EverOS context and streams a spoken answer from `openai/gpt-audio-mini`. Raw audio is never stored; saving the transcript and answer to EverOS is an explicit, opt-in checkbox.
+
 ## Run locally
 
 ```bash
@@ -41,6 +43,7 @@ npm run build
 - A source-grounded explanation demo with explicit memory provenance
 - Server-only EverOS v1 API integration for confirmed concept writes and hybrid retrieval
 - Butterbase AI Gateway for configurable OpenAI-compatible model inference
+- GPT Audio Mini push-to-talk answers with browser recording, WAV conversion, transcript review, and spoken playback
 - Grounded per-selection chat with recent-thread context and EverOS personalization
 - Browser `localStorage` fallback behind `memoryAdapter` for resilient demo persistence
 - React and SVG for the animated concept graph with list view, zoom, and mini-map

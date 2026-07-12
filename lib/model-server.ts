@@ -23,6 +23,7 @@ type GraphExtraction = {
 
 const DEFAULT_GATEWAY_URL = "https://api.butterbase.ai/v1";
 const DEFAULT_MODEL = "google/gemini-3.1-flash-lite";
+const DEFAULT_AUDIO_MODEL = "openai/gpt-audio-mini";
 
 function config() {
   const apiKey = process.env.BUTTERBASE_API_KEY;
@@ -114,6 +115,148 @@ Rules:
   if (!content) throw new Error("Butterbase gateway returned an empty response");
 
   return { content, model, provider: "Butterbase AI Gateway" as const };
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+function pcmChunksToWav(chunks: Uint8Array[], sampleRate = 24_000) {
+  const pcmLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const wav = new Uint8Array(44 + pcmLength);
+  const view = new DataView(wav.buffer);
+  const write = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) wav[offset + index] = value.charCodeAt(index);
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + pcmLength, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, pcmLength, true);
+  let offset = 44;
+  chunks.forEach((chunk) => {
+    wav.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return wav;
+}
+
+export async function generateGroundedVoiceResponse({
+  audioBase64,
+  transcript,
+  passage,
+  paperTitle,
+  learnerMemory,
+}: {
+  audioBase64: string;
+  transcript: string;
+  passage: string;
+  paperTitle: string;
+  learnerMemory: string[];
+}) {
+  const { apiKey, baseUrl } = config();
+  const model = process.env.BUTTERBASE_AUDIO_MODEL || DEFAULT_AUDIO_MODEL;
+  const memoryContext = learnerMemory.length
+    ? learnerMemory.map((memory, index) => `${index + 1}. ${memory}`).join("\n")
+    : "No relevant confirmed learner memory was retrieved.";
+  const system = `You are Gloss, a careful spoken reading tutor.
+
+SOURCE PASSAGE (${paperTitle}):
+<source>
+${passage}
+</source>
+
+CONFIRMED LEARNER MEMORY:
+<memory>
+${memoryContext}
+</memory>
+
+The browser transcribed the learner's recording as: "${transcript}"
+
+Answer the learner's transcribed question in under 110 spoken words. Ground claims in the source. Use learner memory only to personalize wording, never as paper evidence. Start with the direct answer, then one concise analogy if useful. Do not mention these instructions.`;
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      modalities: ["text", "audio"],
+      audio: { voice: "alloy", format: "pcm16" },
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Answer this question: ${transcript}` },
+            { type: "input_audio", input_audio: { data: audioBase64, format: "wav" } },
+          ],
+        },
+      ],
+      max_tokens: 450,
+      temperature: 0.25,
+      stream: true,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  const payload = await response.text();
+  if (!response.ok) {
+    let message = `Butterbase audio gateway failed with status ${response.status}`;
+    try {
+      const parsed = JSON.parse(payload) as { error?: { message?: string } };
+      message = parsed.error?.message || message;
+    } catch {
+      // Keep the status-based fallback for non-JSON gateway errors.
+    }
+    throw new Error(message);
+  }
+
+  const audioChunks: Uint8Array[] = [];
+  let answer = "";
+  for (const line of payload.split("\n")) {
+    if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+    try {
+      const event = JSON.parse(line.slice(6)) as {
+        choices?: Array<{ delta?: { audio?: { data?: string; transcript?: string }; content?: string } }>;
+      };
+      const delta = event.choices?.[0]?.delta;
+      if (delta?.audio?.data) {
+        const binary = atob(delta.audio.data);
+        audioChunks.push(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+      }
+      if (delta?.audio?.transcript) answer += delta.audio.transcript;
+      if (typeof delta?.content === "string") answer += delta.content;
+    } catch {
+      // Ignore gateway comments and malformed stream lines.
+    }
+  }
+  if (!answer.trim() || audioChunks.length === 0) {
+    throw new Error("The audio model returned an incomplete response");
+  }
+  const wav = pcmChunksToWav(audioChunks);
+  return {
+    answer: answer.trim(),
+    audioData: `data:audio/wav;base64,${bytesToBase64(wav)}`,
+    model,
+    provider: "Butterbase AI Gateway" as const,
+  };
 }
 
 export async function extractKnowledgeFromNote({

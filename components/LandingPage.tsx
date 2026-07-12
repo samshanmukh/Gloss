@@ -15,6 +15,7 @@ import {
   Link2,
   LockKeyhole,
   MessageSquareText,
+  Mic,
   Network,
   Search,
   ServerCog,
@@ -40,6 +41,12 @@ const features = [
     title: "Grounded AI tutor",
     copy: "Select a passage and ask follow-up questions. Answers stay anchored to source text and adapt to prior understanding.",
     tag: "Butterbase AI",
+  },
+  {
+    icon: Mic,
+    title: "Push-to-talk tutoring",
+    copy: "Record a question, see its live transcript, and hear a grounded spoken answer. Raw audio is processed ephemerally and never stored.",
+    tag: "GPT Audio",
   },
   {
     icon: BrainCircuit,
@@ -88,7 +95,7 @@ const features = [
 const stack = [
   ["Application", "Next.js 16 · React 19 · TypeScript 6", "App Router, Edge route handlers, responsive client workspace"],
   ["Documents", "PDF.js 6", "Canvas rendering, selectable text layers, local page navigation and zoom"],
-  ["Inference", "Butterbase AI Gateway", "OpenAI-compatible completions using configurable Gemini Flash Lite"],
+  ["Inference", "Butterbase AI Gateway", "Gemini Flash Lite for text and vision; GPT Audio Mini for spoken tutoring"],
   ["Memory", "EverOS v1", "Hybrid retrieval, episodic memory, learner profiles, durable concept and note writes"],
   ["Hosting", "Butterbase Edge SSR", "Cloudflare Workers runtime, globally delivered static assets and APIs"],
   ["Private storage", "IndexedDB + localStorage", "PDF blobs remain in-browser; resilient local caches are learner-scoped"],
@@ -100,6 +107,7 @@ const routes = [
   ["POST /api/memory", "Retrieves learner memory or confirms and flushes a mastered concept."],
   ["POST /api/notes", "Writes note upserts and deletion markers into EverOS."],
   ["POST /api/graph", "Extracts strict, source-grounded concept and relationship JSON from notes."],
+  ["POST /api/voice", "Grounds a WAV recording and browser transcript, streams speech, optionally stores only the transcript."],
 ];
 
 export default function LandingPage() {
@@ -305,11 +313,12 @@ export default function LandingPage() {
           <h2>Your document stays in your browser.</h2>
           <p>
             Uploaded PDF blobs are stored in the browser’s IndexedDB and rendered locally. Gloss sends only the
-            selected passage and your explicit question or note through server routes when you request AI processing.
+            selected passage and your explicit question, note, or ephemeral voice recording through server routes when you request AI processing.
           </p>
           <ul>
             <li><ShieldCheck size={16} /><span><strong>No whole-PDF upload</strong>PDF files never leave the browser.</span></li>
             <li><LockKeyhole size={16} /><span><strong>Server-only credentials</strong>EverOS and Butterbase keys are never exposed to client JavaScript.</span></li>
+            <li><Mic size={16} /><span><strong>Ephemeral voice</strong>Raw recordings are never stored; saving the transcript to EverOS is explicit and optional.</span></li>
             <li><UserRound size={16} /><span><strong>Learner-scoped state</strong>Notes, graph, feedback, progress, and memory are partitioned by learner ID.</span></li>
           </ul>
         </div>

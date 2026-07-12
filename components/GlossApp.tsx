@@ -41,6 +41,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CommandPalette from "@/components/CommandPalette";
 import PdfReader, { PdfSelectedContent } from "@/components/PdfReader";
+import VoiceRecorder from "@/components/VoiceRecorder";
 import {
   AppNotification,
   BASE_CONCEPTS,
@@ -57,6 +58,7 @@ import {
   READING_GOAL_HOURS,
   ReadingNote,
   SourceId,
+  VoiceTutorResponse,
   conceptStore,
   feedbackStore,
   findConceptMatches,
@@ -439,6 +441,20 @@ export default function GlossApp() {
     }
   }
 
+  function handleVoiceComplete(response: VoiceTutorResponse) {
+    const entry: QAEntry = {
+      id: nextId("voice"),
+      question: `Voice · ${response.transcript}`,
+      answer: response.answer,
+    };
+    setQaEntries((current) => [...current, entry]);
+    if (activeConceptId) appendToConceptThread(activeConceptId, entry);
+    notify(
+      "Voice answer ready",
+      response.privacy.transcriptStored ? "Transcript saved to EverOS" : "Raw audio and transcript were not stored",
+    );
+  }
+
   async function confirmUnderstanding() {
     const conceptId =
       source === "cortical" ? "reward_signal" : source === "td" ? "td_error" : `pdf:${(pdfSelection?.text ?? "passage").slice(0, 48)}`;
@@ -727,7 +743,19 @@ export default function GlossApp() {
               noteFocusTick={noteFocusTick}
               qaEntries={qaEntries}
               feedback={feedback}
+              voiceContext={{
+                learnerId,
+                passage:
+                  source === "pdf"
+                    ? pdfSelection?.text ?? ""
+                    : `${PAPER_COPY[source as PaperId].selection} ${PAPER_COPY[source as PaperId].after}`,
+                paperTitle:
+                  source === "pdf"
+                    ? `${pdfFile?.name ?? "Uploaded PDF"} (page ${pdfSelection?.page ?? "?"})`
+                    : PAPER_META[source as PaperId].title,
+              }}
               onFeedback={setFeedbackValue}
+              onVoiceComplete={handleVoiceComplete}
               onAsk={(question) => void askQuestion(question)}
               onNote={setNote}
               onSaveNote={(content, id) => void saveNote(content, id)}
@@ -1175,7 +1203,9 @@ function ExplanationPane({
   noteFocusTick,
   qaEntries,
   feedback,
+  voiceContext,
   onFeedback,
+  onVoiceComplete,
   onAsk,
   onNote,
   onSaveNote,
@@ -1198,7 +1228,9 @@ function ExplanationPane({
   noteFocusTick: number;
   qaEntries: QAEntry[];
   feedback: Record<string, FeedbackValue>;
+  voiceContext: { learnerId: string; passage: string; paperTitle: string };
   onFeedback: (key: string, value: FeedbackValue) => void;
+  onVoiceComplete: (response: VoiceTutorResponse) => void;
   onAsk: (question: string) => void;
   onNote: (note: string) => void;
   onSaveNote: (content: string, id?: string) => void;
@@ -1377,6 +1409,13 @@ function ExplanationPane({
               placeholder="Ask a question about this…"
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && submitQuestion()}
+            />
+            <VoiceRecorder
+              learnerId={voiceContext.learnerId}
+              passage={voiceContext.passage}
+              paperTitle={voiceContext.paperTitle}
+              disabled={!voiceContext.passage.trim() || pending}
+              onComplete={onVoiceComplete}
             />
             <button aria-label="Ask" disabled={!question.trim() || pending} onClick={submitQuestion}>
               <CornerDownLeft size={14} />
