@@ -531,8 +531,7 @@ export default function GlossApp() {
         onUpload={openPdf}
         onKnowledge={() => {
           setActiveView("knowledge");
-          setGraphTab("graph");
-          window.setTimeout(() => graphPaneRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
+          window.location.assign("/knowledge");
         }}
         onNotes={() => {
           setActiveView("notes");

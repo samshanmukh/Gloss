@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "pdfjs-dist/web/pdf_viewer.css";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
