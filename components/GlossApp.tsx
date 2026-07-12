@@ -160,7 +160,16 @@ export default function GlossApp() {
     setNotes(noteStore.read(active.id));
     setKnowledgeGraph(graphStore.read(active.id));
     setReadingSeconds(readingTimeStore.read(active.id));
-    void pdfStore.read(active.id).then((storedPdf) => setPdfFile(storedPdf)).catch(() => setPdfFile(null));
+    const params = new URLSearchParams(window.location.search);
+    const requestedPaper = params.get("paper");
+    const requestedPdf = params.get("pdf");
+    if (requestedPaper === "cortical" || requestedPaper === "td") setSource(requestedPaper);
+    void (requestedPdf ? pdfStore.get(active.id, requestedPdf) : pdfStore.read(active.id))
+      .then((storedPdf) => {
+        setPdfFile(storedPdf);
+        if (requestedPdf && storedPdf) setSource("pdf");
+      })
+      .catch(() => setPdfFile(null));
     setSyncState("checking");
     void memoryAdapter
       .retrieve(active.id, "confirmed concepts, learning style, and understanding of reward signals")
@@ -260,7 +269,8 @@ export default function GlossApp() {
     setNote("");
     setActiveView("library");
     try {
-      await pdfStore.write(learnerId, file);
+      const id = await pdfStore.write(learnerId, file);
+      window.history.replaceState(null, "", `/reader?pdf=${encodeURIComponent(id)}`);
       notify("PDF saved to your private library", `${file.name} will be restored after refresh`);
     } catch {
       notify("PDF opened for this session", "Browser storage could not persist the file");
@@ -509,6 +519,10 @@ export default function GlossApp() {
           }
         }}
         onUpload={openPdf}
+        onLibrary={() => {
+          setActiveView("library");
+          window.location.assign("/library");
+        }}
         onKnowledge={() => {
           setActiveView("knowledge");
           window.location.assign("/knowledge");
@@ -641,6 +655,7 @@ function Sidebar({
   onOpenPaper,
   onOpenPdf,
   onUpload,
+  onLibrary,
   onKnowledge,
   onNotes,
   onMemory,
@@ -657,6 +672,7 @@ function Sidebar({
   onOpenPaper: (paper: PaperId) => void;
   onOpenPdf: () => void;
   onUpload: (file: File) => void;
+  onLibrary: () => void;
   onKnowledge: () => void;
   onNotes: () => void;
   onMemory: () => void;
@@ -692,7 +708,7 @@ function Sidebar({
         </button>
       </div>
       <nav className="primary-nav" aria-label="Primary navigation">
-        <button className={activeView === "library" ? "active" : ""} onClick={() => source === "pdf" ? onOpenPdf() : onOpenPaper(source as PaperId)}><Library size={17} /> Library</button>
+        <button className={activeView === "library" ? "active" : ""} onClick={onLibrary}><Library size={17} /> Library</button>
         <button className={activeView === "knowledge" ? "active" : ""} onClick={onKnowledge}><Network size={17} /> Knowledge</button>
         <button className={activeView === "notes" ? "active" : ""} onClick={onNotes}><StickyNote size={17} /> Notes</button>
         <button className={activeView === "memory" ? "active" : ""} onClick={onMemory}><BrainCircuit size={17} /> Memory</button>

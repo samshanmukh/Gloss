@@ -270,6 +270,14 @@ export const graphStore = {
 const PDF_DB = "gloss-private-library";
 const PDF_STORE = "papers";
 
+export type LibraryPdf = {
+  id: string;
+  name: string;
+  size: number;
+  addedAt: number;
+  file: File;
+};
+
 function openPdfDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = window.indexedDB.open(PDF_DB, 1);
@@ -285,23 +293,68 @@ function openPdfDatabase(): Promise<IDBDatabase> {
 
 export const pdfStore = {
   async read(learnerId: string): Promise<File | null> {
-    if (typeof window === "undefined" || !window.indexedDB) return null;
+    const papers = await pdfStore.list(learnerId);
+    return papers[0]?.file ?? null;
+  },
+  async list(learnerId: string): Promise<LibraryPdf[]> {
+    if (typeof window === "undefined" || !window.indexedDB) return [];
     const db = await openPdfDatabase();
     try {
-      return await new Promise<File | null>((resolve, reject) => {
-        const request = db.transaction(PDF_STORE, "readonly").objectStore(PDF_STORE).get(learnerId);
-        request.onsuccess = () => resolve((request.result as File | undefined) ?? null);
+      return await new Promise<LibraryPdf[]>((resolve, reject) => {
+        const papers: LibraryPdf[] = [];
+        const request = db.transaction(PDF_STORE, "readonly").objectStore(PDF_STORE).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            resolve(papers.sort((a, b) => b.addedAt - a.addedAt));
+            return;
+          }
+          const key = String(cursor.key);
+          if (key === learnerId && cursor.value instanceof File) {
+            const file = cursor.value as File;
+            papers.push({
+              id: `legacy-${file.name}-${file.size}`,
+              name: file.name,
+              size: file.size,
+              addedAt: file.lastModified || Date.now(),
+              file,
+            });
+          } else if (key.startsWith(`${learnerId}:`)) {
+            papers.push(cursor.value as LibraryPdf);
+          }
+          cursor.continue();
+        };
         request.onerror = () => reject(request.error);
       });
     } finally {
       db.close();
     }
   },
-  async write(learnerId: string, file: File): Promise<void> {
+  async get(learnerId: string, id: string): Promise<File | null> {
+    const papers = await pdfStore.list(learnerId);
+    return papers.find((paper) => paper.id === id)?.file ?? null;
+  },
+  async write(learnerId: string, file: File): Promise<string> {
+    const id = `${Date.now()}-${file.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 48)}`;
+    const paper: LibraryPdf = { id, name: file.name, size: file.size, addedAt: Date.now(), file };
     const db = await openPdfDatabase();
     try {
       await new Promise<void>((resolve, reject) => {
-        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).put(file, learnerId);
+        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).put(paper, `${learnerId}:${id}`);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+      return id;
+    } finally {
+      db.close();
+    }
+  },
+  async remove(learnerId: string, id: string): Promise<void> {
+    const db = await openPdfDatabase();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const key = id.startsWith("legacy-") ? learnerId : `${learnerId}:${id}`;
+        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).delete(key);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
       });
@@ -313,9 +366,18 @@ export const pdfStore = {
     const db = await openPdfDatabase();
     try {
       await new Promise<void>((resolve, reject) => {
-        const request = db.transaction(PDF_STORE, "readwrite").objectStore(PDF_STORE).delete(learnerId);
-        request.onsuccess = () => resolve();
+        const transaction = db.transaction(PDF_STORE, "readwrite");
+        const request = transaction.objectStore(PDF_STORE).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const key = String(cursor.key);
+          if (key === learnerId || key.startsWith(`${learnerId}:`)) cursor.delete();
+          cursor.continue();
+        };
         request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
       });
     } finally {
       db.close();
