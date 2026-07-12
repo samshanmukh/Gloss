@@ -1,0 +1,220 @@
+{
+  "tables": {
+    "profiles": {
+      "columns": {
+        "user_id": { "type": "uuid", "unique": true },
+        "display_name": { "type": "text", "nullable": false },
+        "field": { "type": "text" },
+        "level": { "type": "text" },
+        "preferred_style": { "type": "text", "default": "'short_plus_analogy'" },
+        "subject_profiles": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "retention_policy": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "notes": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "content": { "type": "text", "nullable": false },
+        "format": { "type": "text", "default": "'markdown'" },
+        "tags": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "folder": { "type": "text" },
+        "pinned": { "type": "boolean", "default": "false" },
+        "links": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "history": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "source": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "version": { "type": "integer", "default": "1" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" },
+        "deleted_at": { "type": "timestamptz" }
+      }
+    },
+    "annotations": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "library_item_id": { "type": "text", "nullable": false },
+        "page": { "type": "integer", "nullable": false },
+        "kind": { "type": "text", "nullable": false },
+        "text": { "type": "text" },
+        "rects": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "color": { "type": "text", "default": "'purple'" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "knowledge_nodes": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "label": { "type": "text", "nullable": false },
+        "summary": { "type": "text" },
+        "aliases": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "source": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "status": { "type": "text", "default": "'draft'" },
+        "confidence": { "type": "float8", "default": "0" },
+        "mastery": { "type": "float8", "default": "0" },
+        "last_reviewed_at": { "type": "timestamptz" },
+        "version": { "type": "integer", "default": "1" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "knowledge_edges": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "from_client_id": { "type": "text", "nullable": false },
+        "to_client_id": { "type": "text", "nullable": false },
+        "relation": { "type": "text", "nullable": false },
+        "provenance": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "status": { "type": "text", "default": "'draft'" },
+        "confidence": { "type": "float8", "default": "0" },
+        "version": { "type": "integer", "default": "1" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "memory_records": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "type": { "type": "text", "nullable": false },
+        "content": { "type": "jsonb", "nullable": false },
+        "provenance": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "confidence": { "type": "float8", "default": "1" },
+        "retention_days": { "type": "integer" },
+        "supersedes": { "type": "text" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" },
+        "deleted_at": { "type": "timestamptz" }
+      }
+    },
+    "library_items": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "title": { "type": "text", "nullable": false },
+        "authors": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "doi": { "type": "text" },
+        "arxiv_id": { "type": "text" },
+        "metadata": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "tags": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "folder": { "type": "text" },
+        "favorite": { "type": "boolean", "default": "false" },
+        "reading_status": { "type": "text", "default": "'queued'" },
+        "progress": { "type": "float8", "default": "0" },
+        "storage_object_id": { "type": "text" },
+        "content_hash": { "type": "text" },
+        "import_source": { "type": "text", "default": "'local'" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "flashcards": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "client_id": { "type": "text", "nullable": false },
+        "front": { "type": "text", "nullable": false },
+        "back": { "type": "text", "nullable": false },
+        "source": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "tags": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "ease": { "type": "float8", "default": "2.5" },
+        "interval_days": { "type": "integer", "default": "0" },
+        "repetitions": { "type": "integer", "default": "0" },
+        "lapses": { "type": "integer", "default": "0" },
+        "due_at": { "type": "timestamptz", "default": "now()" },
+        "last_reviewed_at": { "type": "timestamptz" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "review_events": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "flashcard_id": { "type": "text", "nullable": false },
+        "rating": { "type": "integer", "nullable": false },
+        "previous_interval": { "type": "integer", "default": "0" },
+        "next_interval": { "type": "integer", "default": "0" },
+        "reviewed_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "goals": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "type": { "type": "text", "nullable": false },
+        "target": { "type": "integer", "nullable": false },
+        "period": { "type": "text", "default": "'daily'" },
+        "active": { "type": "boolean", "default": "true" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "quiz_attempts": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "quiz": { "type": "jsonb", "nullable": false },
+        "answers": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "score": { "type": "float8", "default": "0" },
+        "started_at": { "type": "timestamptz", "default": "now()" },
+        "completed_at": { "type": "timestamptz" }
+      }
+    },
+    "reading_sessions": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "library_item_id": { "type": "text" },
+        "seconds": { "type": "integer", "default": "0" },
+        "pages": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "questions": { "type": "integer", "default": "0" },
+        "difficult_sections": { "type": "jsonb", "default": "'[]'::jsonb" },
+        "started_at": { "type": "timestamptz", "default": "now()" },
+        "ended_at": { "type": "timestamptz" }
+      }
+    },
+    "feedback": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "target_id": { "type": "text", "nullable": false },
+        "value": { "type": "text", "nullable": false },
+        "context": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "sync_operations": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "device_id": { "type": "text", "nullable": false },
+        "entity_type": { "type": "text", "nullable": false },
+        "entity_id": { "type": "text", "nullable": false },
+        "operation": { "type": "text", "nullable": false },
+        "payload": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "base_version": { "type": "integer", "default": "0" },
+        "created_at": { "type": "timestamptz", "default": "now()" }
+      }
+    },
+    "analytics_events": {
+      "columns": {
+        "id": { "type": "uuid", "unique": true, "default": "gen_random_uuid()" },
+        "user_id": { "type": "uuid", "nullable": false },
+        "event": { "type": "text", "nullable": false },
+        "properties": { "type": "jsonb", "default": "'{}'::jsonb" },
+        "occurred_at": { "type": "timestamptz", "default": "now()" }
+      }
+    }
+  }
+}
