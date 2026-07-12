@@ -194,17 +194,19 @@ export const memoryAdapter = {
     passage,
     paperTitle,
     history,
+    imageData,
   }: {
     learnerId: string;
     question: string;
     passage: string;
     paperTitle: string;
     history: Array<{ role: "user" | "assistant"; content: string }>;
+    imageData?: string;
   }): Promise<string> {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ learnerId, question, passage, paperTitle, history }),
+      body: JSON.stringify({ learnerId, question, passage, paperTitle, history, imageData }),
     });
     const result = (await response.json()) as { answer?: string; error?: string };
     if (!response.ok || !result.answer) throw new Error(result.error || "Tutor is unavailable");

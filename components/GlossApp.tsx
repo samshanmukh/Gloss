@@ -40,7 +40,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CommandPalette from "@/components/CommandPalette";
-import PdfReader from "@/components/PdfReader";
+import PdfReader, { PdfSelectedContent } from "@/components/PdfReader";
 import {
   AppNotification,
   BASE_CONCEPTS,
@@ -112,7 +112,7 @@ export default function GlossApp() {
   const [activeView, setActiveView] = useState<NavView>("library");
   const [source, setSource] = useState<SourceId>("cortical");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfSelection, setPdfSelection] = useState<{ text: string; page: number } | null>(null);
+  const [pdfSelection, setPdfSelection] = useState<PdfSelectedContent | null>(null);
   const [memory, setMemory] = useState(initialMemory(DEFAULT_LEARNER.id));
   const [explained, setExplained] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
@@ -284,14 +284,21 @@ export default function GlossApp() {
     }
   }
 
-  function onPdfSelect(text: string, page: number) {
-    setPdfSelection({ text, page });
+  function onPdfSelect(selection: PdfSelectedContent) {
+    setPdfSelection(selection);
     setExplained(true);
     setQaEntries([]);
-    void askQuestion("Explain this passage in simple terms.", { text, page });
+    void askQuestion(
+      selection.kind === "image"
+        ? "Explain this figure or diagram. Walk through its important labels, arrows, and relationships."
+        : selection.kind === "formula"
+          ? "Explain this formula in simple terms, including what each symbol means and why it matters."
+          : "Explain this passage in simple terms.",
+      selection,
+    );
   }
 
-  async function askQuestion(question: string, selection?: { text: string; page: number }) {
+  async function askQuestion(question: string, selection?: PdfSelectedContent) {
     const active = selection ?? pdfSelection;
     const entry: QAEntry = { id: nextId("qa"), question, answer: "", pending: true };
     setQaEntries((current) => [...current, entry]);
@@ -312,7 +319,7 @@ export default function GlossApp() {
       ]);
 
     try {
-      const answer = await memoryAdapter.ask({ learnerId, question, passage, paperTitle, history });
+      const answer = await memoryAdapter.ask({ learnerId, question, passage, paperTitle, history, imageData: active?.imageData });
       setQaEntries((current) =>
         current.map((item) => (item.id === entry.id ? { ...item, answer, pending: false } : item)),
       );
@@ -566,7 +573,15 @@ export default function GlossApp() {
         />
         <div className="reading-grid">
           {source === "pdf" && pdfFile ? (
-            <PdfReader key={`${pdfFile.name}-${pdfFile.size}`} file={pdfFile} onSelectText={onPdfSelect} />
+            <PdfReader
+              key={`${pdfFile.name}-${pdfFile.size}`}
+              file={pdfFile}
+              onSelectContent={onPdfSelect}
+              onClearSelection={() => {
+                setPdfSelection(null);
+                setExplained(false);
+              }}
+            />
           ) : (
             <PaperPane paper={source as PaperId} explained={explained} onExplain={explainSelection} />
           )}
@@ -1005,7 +1020,7 @@ function ExplanationPane({
   onClose,
 }: {
   source: SourceId;
-  pdfSelection: { text: string; page: number } | null;
+  pdfSelection: PdfSelectedContent | null;
   explained: boolean;
   personalized: boolean;
   confirmed: boolean;
@@ -1140,7 +1155,7 @@ function ExplanationPane({
 
           {isPdf && pdfSelection ? (
             <>
-              <p className="eyebrow">Selected · page {pdfSelection.page}</p>
+              <p className="eyebrow">Selected {pdfSelection.kind} · page {pdfSelection.page}</p>
               <blockquote className="pdf-quote">
                 {pdfSelection.text.slice(0, 280)}
                 {pdfSelection.text.length > 280 ? "…" : ""}

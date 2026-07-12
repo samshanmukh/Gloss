@@ -41,12 +41,14 @@ export async function generateGroundedTutorResponse({
   question,
   history,
   learnerMemory,
+  imageData,
 }: {
   passage: string;
   paperTitle: string;
   question: string;
   history: ModelMessage[];
   learnerMemory: string[];
+  imageData?: string;
 }) {
   const { apiKey, baseUrl, model } = config();
   const memoryContext = learnerMemory.length
@@ -59,6 +61,7 @@ SOURCE PASSAGE (${paperTitle}):
 <source>
 ${passage}
 </source>
+${imageData ? "\nA cropped image or figure selected by the learner is attached to their question." : ""}
 
 CONFIRMED LEARNER MEMORY (EverOS):
 <memory>
@@ -66,7 +69,7 @@ ${memoryContext}
 </memory>
 
 Rules:
-- Answer questions about the selected passage using only facts supported by the source passage.
+- Answer questions using only facts supported by the selected passage and attached visual, when present.
 - Learner memory may shape wording, level, and analogies, but it is not evidence about the paper.
 - Clearly say when the source does not establish an answer. Never invent facts, equations, or citations.
 - Prefer a short explanation first, then an analogy when useful.
@@ -84,7 +87,15 @@ Rules:
       messages: [
         { role: "system", content: systemPrompt },
         ...history.slice(-8),
-        { role: "user", content: question },
+        {
+          role: "user",
+          content: imageData
+            ? [
+                { type: "text", text: question },
+                { type: "image_url", image_url: { url: imageData } },
+              ]
+            : question,
+        },
       ],
       max_tokens: 700,
       temperature: 0.2,

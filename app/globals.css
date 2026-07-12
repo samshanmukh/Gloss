@@ -562,8 +562,38 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
 .pdf-text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; transform-origin: 0 0; z-index: 2; }
 .pdf-text-layer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
 .pdf-text-layer ::selection { background: #6d4be855; }
+.pdf-smart-region {
+  position: absolute; z-index: 3; min-width: 34px; min-height: 24px; border: 1.5px dashed #7962dd80;
+  border-radius: 5px; background: #6d4be806; cursor: pointer; transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.pdf-smart-region.image { border-color: #398edb8c; background: #4b9cf406; }
+.pdf-smart-region:hover, .pdf-smart-region.active { border-style: solid; border-color: #7658e8; background: #6d4be80f; box-shadow: 0 0 0 3px #6d4be812, 0 6px 20px #2422461c; }
+.pdf-smart-region.image:hover, .pdf-smart-region.image.active { border-color: #378edc; background: #4b9cf40d; box-shadow: 0 0 0 3px #4b9cf412, 0 6px 20px #2422461c; }
+.pdf-region-type {
+  position: absolute; top: -22px; left: -1px; display: flex; align-items: center; gap: 4px; padding: 4px 6px;
+  border-radius: 5px 5px 0 0; color: #5e46bb; background: #f3efff; font: 700 7px "DM Sans", sans-serif; text-transform: uppercase; letter-spacing: .4px;
+  opacity: .72; pointer-events: none;
+}
+.pdf-smart-region.image .pdf-region-type { color: #337ebc; background: #edf7ff; }
+.pdf-region-actions {
+  position: absolute; z-index: 5; top: -34px; right: -1px; display: flex; align-items: center; gap: 3px;
+  opacity: 0; transform: translateY(4px); transition: opacity .18s ease, transform .18s ease;
+}
+.pdf-smart-region:hover .pdf-region-actions, .pdf-smart-region.active .pdf-region-actions { opacity: 1; transform: translateY(0); }
+.pdf-region-actions button {
+  height: 27px; display: flex; align-items: center; gap: 5px; padding: 0 8px; border: 0; border-radius: 6px;
+  color: white; background: linear-gradient(135deg, #7859ed, #6141d8); box-shadow: 0 5px 15px #6d4be83d;
+  font: 600 8px "DM Sans", sans-serif; white-space: nowrap; cursor: pointer;
+}
+.pdf-region-actions button.close { width: 27px; justify-content: center; padding: 0; color: #67697d; background: white; box-shadow: 0 4px 12px #20203a22; }
+.pdf-selection-pin {
+  position: absolute; z-index: 4; border-radius: 3px; border: 1.5px solid #6d4be8; background: #6d4be820;
+  box-shadow: 0 0 0 2px #ffffff99, 0 3px 12px #6d4be824; pointer-events: none;
+}
+.pdf-selection-pin.image { border-color: #348bd4; background: #4b9cf417; box-shadow: 0 0 0 2px #ffffff99, 0 3px 12px #4b9cf424; }
+.pdf-selection-pin.formula { border-color: #8b65e6; background: #8065ef13; }
 .pdf-explain-bar {
-  position: sticky; bottom: 6px; z-index: 5; display: flex; align-items: center; gap: 12px; width: min(480px, 96%);
+  position: sticky; bottom: 6px; z-index: 7; display: flex; align-items: center; gap: 8px; width: min(590px, 96%);
   margin: 14px auto 0; padding: 10px 12px; border-radius: 10px; background: #171730f2; color: #c9c9dd;
   box-shadow: 0 14px 34px #09091e59;
 }
@@ -572,6 +602,10 @@ kbd { border: 1px solid #e3e3ec; border-radius: 4px; padding: 1px 4px; font-fami
   display: flex; align-items: center; gap: 6px; flex: 0 0 auto; border: 0; border-radius: 7px; padding: 8px 11px;
   color: white; font-size: 9.5px; background: linear-gradient(135deg, #7859ed, #6141d8); cursor: pointer;
 }
+.pdf-explain-bar button.clear-selection { width: 31px; justify-content: center; padding: 0; color: #b9bac8; background: #ffffff12; box-shadow: none; }
+.pdf-explain-bar button.clear-selection:hover { color: white; background: #ffffff1e; }
+.pdf-selection-kind { display: flex; align-items: center; gap: 4px; padding: 5px 6px; border-radius: 6px; color: #b8a8ff; background: #8065ef1c; font-size: 6.5px; font-weight: 700; text-transform: uppercase; }
+.pdf-selection-kind.image { color: #88c6f8; background: #4b9cf41c; }
 .pdf-quote {
   margin: 0; padding: 10px 12px; border-left: 3px solid var(--purple); border-radius: 0 8px 8px 0;
   background: #f6f4ff; color: #444258; font-size: 10px; line-height: 1.6; font-style: italic;
