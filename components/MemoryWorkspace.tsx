@@ -81,7 +81,14 @@ export default function MemoryWorkspace() {
       setMemory(memoryAdapter.read(active.id));
       setNotes(noteStore.read(active.id));
       setGraph(graphStore.read(active.id));
-      void retrieve(active.id, query);
+      const requestedQuery = new URLSearchParams(window.location.search).get("q");
+      if (requestedQuery) {
+        setQuery(requestedQuery);
+        setView("explorer");
+        void retrieve(active.id, requestedQuery);
+      } else {
+        void retrieve(active.id, query);
+      }
     });
     return () => window.cancelAnimationFrame(frame);
     // query is the initial retrieval seed; later changes only run on explicit search.

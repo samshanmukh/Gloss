@@ -171,6 +171,11 @@ export default function KnowledgeWorkspace() {
       const merged = { nodes: [...baseNodes, ...dynamic.nodes], edges: [...BASE_EDGES, ...dynamic.edges] };
       setAllGraph(merged);
       setNotes(savedNotes);
+      const requestedFocus = new URLSearchParams(window.location.search).get("focus");
+      if (requestedFocus && merged.nodes.some((node) => node.id === requestedFocus)) {
+        setSelectedId(requestedFocus);
+        setInspectorOpen(true);
+      }
       setNodes(
         merged.nodes.map((node, index) => {
           const sourceType: ConceptData["sourceType"] =

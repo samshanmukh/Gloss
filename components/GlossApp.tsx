@@ -179,7 +179,12 @@ export default function GlossApp() {
     const params = new URLSearchParams(window.location.search);
     const requestedPaper = params.get("paper");
     const requestedPdf = params.get("pdf");
+    const requestedPanel = params.get("panel");
     if (requestedPaper === "cortical" || requestedPaper === "td") setSource(requestedPaper);
+    if (requestedPanel === "notes") {
+      setReadingPanel("notes");
+      setActiveView("notes");
+    }
     void (requestedPdf ? pdfStore.get(active.id, requestedPdf) : pdfStore.read(active.id))
       .then((storedPdf) => {
         setPdfFile(storedPdf);
@@ -824,7 +829,7 @@ export default function GlossApp() {
           note={note}
           onClose={() => setPaletteOpen(false)}
           onOpenPaper={(paper) => void openPaper(paper)}
-          onFocusGraph={openKnowledge}
+          onOpenConcept={(conceptId) => openConcept(conceptId)}
         />
       )}
 
