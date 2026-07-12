@@ -15,13 +15,45 @@
 }
 
 * { box-sizing: border-box; }
+html { color-scheme: light; }
 html, body { margin: 0; min-height: 100%; background: #e9ebf4; color: var(--ink); }
-body { font-family: "DM Sans", Arial, sans-serif; }
-button, textarea { font: inherit; }
-button { color: inherit; }
-button:focus-visible, textarea:focus-visible {
+body {
+  font-family: "DM Sans", Arial, sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea, select { font: inherit; letter-spacing: inherit; }
+button, input, textarea, select { color: inherit; }
+input, textarea, select {
+  color-scheme: light;
+  background-color: #fff;
+  caret-color: var(--purple);
+}
+input::placeholder, textarea::placeholder { color: #9698a8; opacity: 1; }
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 1000px #fff inset;
+  transition: background-color 9999s ease-out 0s;
+}
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible {
   outline: 2px solid #8267ee;
   outline-offset: 2px;
+}
+.knowledge-workspace input,
+.memory-workspace input,
+.library-workspace input {
+  color-scheme: dark;
+}
+.knowledge-workspace input:-webkit-autofill,
+.memory-workspace input:-webkit-autofill,
+.library-workspace input:-webkit-autofill {
+  -webkit-text-fill-color: #eef1f8;
+  box-shadow: 0 0 0 1000px #11182c inset;
 }
 
 .app-shell {
