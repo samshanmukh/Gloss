@@ -130,10 +130,6 @@ export default function GlossApp() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [memoryEvidence, setMemoryEvidence] = useState<string[]>([]);
-  const [memoryQuery, setMemoryQuery] = useState("confirmed concepts, notes, questions, and learning preferences");
-  const [memoryLoading, setMemoryLoading] = useState(false);
   const [readingSeconds, setReadingSeconds] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const graphPaneRef = useRef<HTMLElement>(null);
@@ -268,22 +264,6 @@ export default function GlossApp() {
       notify("PDF saved to your private library", `${file.name} will be restored after refresh`);
     } catch {
       notify("PDF opened for this session", "Browser storage could not persist the file");
-    }
-  }
-
-  async function openMemory(query = memoryQuery) {
-    setActiveView("memory");
-    setMemoryOpen(true);
-    setMemoryLoading(true);
-    try {
-      const result = await memoryAdapter.retrieve(learnerId, query);
-      setMemoryEvidence(result.evidence);
-      setSyncState("connected");
-    } catch {
-      setMemoryEvidence([]);
-      setSyncState("offline");
-    } finally {
-      setMemoryLoading(false);
     }
   }
 
@@ -538,7 +518,10 @@ export default function GlossApp() {
           setExplained(true);
           setNotePanelTick((tick) => tick + 1);
         }}
-        onMemory={() => void openMemory()}
+        onMemory={() => {
+          setActiveView("memory");
+          window.location.assign("/memory");
+        }}
         onReset={resetDemo}
         confirmed={confirmed}
         syncState={syncState}
@@ -642,23 +625,6 @@ export default function GlossApp() {
           current={learner}
           onCancel={learner ? () => setSignInOpen(false) : undefined}
           onSubmit={switchLearner}
-        />
-      )}
-      {memoryOpen && (
-        <MemoryModal
-          learnerName={learner?.name ?? "Learner"}
-          mastered={memory.mastered}
-          notes={notes}
-          evidence={memoryEvidence}
-          query={memoryQuery}
-          loading={memoryLoading}
-          syncState={syncState}
-          onQuery={setMemoryQuery}
-          onSearch={() => void openMemory(memoryQuery)}
-          onClose={() => {
-            setMemoryOpen(false);
-            setActiveView("library");
-          }}
         />
       )}
     </main>
@@ -1534,88 +1500,6 @@ function ProgressBar({
         {crossPaper && <span className="recent-chip purple">TD error</span>}
       </div>
     </footer>
-  );
-}
-
-/* ── EverOS memory browser ───────────────────────────────────────── */
-
-function MemoryModal({
-  learnerName,
-  mastered,
-  notes,
-  evidence,
-  query,
-  loading,
-  syncState,
-  onQuery,
-  onSearch,
-  onClose,
-}: {
-  learnerName: string;
-  mastered: string[];
-  notes: ReadingNote[];
-  evidence: string[];
-  query: string;
-  loading: boolean;
-  syncState: MemorySyncState;
-  onQuery: (query: string) => void;
-  onSearch: () => void;
-  onClose: () => void;
-}) {
-  const conceptName = (id: string) =>
-    ({
-      reward_signal: "Reward signal",
-      td_error: "Temporal-difference error",
-    })[id] ?? id.replace(/^pdf:/, "").replace(/[_-]/g, " ");
-
-  return (
-    <div className="overlay center" role="dialog" aria-label="EverOS learner memory" onClick={onClose}>
-      <section className="memory-modal" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div><BrainCircuit size={18} /><span><strong>{learnerName}’s memory</strong><small>EverOS learner profile</small></span></div>
-          <button aria-label="Close memory" onClick={onClose}><X size={16} /></button>
-        </header>
-        <div className="memory-health">
-          <i className={syncState === "offline" ? "offline" : ""} />
-          {syncState === "offline" ? "EverOS unavailable · showing local memory" : "Connected to EverOS"}
-        </div>
-        <div className="memory-search">
-          <Search size={14} />
-          <input
-            value={query}
-            placeholder="Search confirmed concepts, notes, or past questions"
-            onChange={(event) => onQuery(event.target.value)}
-            onKeyDown={(event) => event.key === "Enter" && onSearch()}
-          />
-          <button disabled={!query.trim() || loading} onClick={onSearch}>
-            {loading ? <Loader2 className="spin" size={14} /> : "Search"}
-          </button>
-        </div>
-        <div className="memory-columns">
-          <div>
-            <p className="memory-label">Confirmed understanding</p>
-            {mastered.length ? mastered.map((id) => (
-              <div className="memory-result compact" key={id}><Check size={13} /><span><strong>{conceptName(id)}</strong><small>Confirmed by {learnerName}</small></span></div>
-            )) : <p className="memory-empty-copy">No concepts confirmed yet.</p>}
-            <p className="memory-label">Reading notes</p>
-            {notes.length ? notes.slice(0, 8).map((note) => (
-              <div className="memory-result compact" key={note.id}><StickyNote size={13} /><span><strong>{note.content.slice(0, 80)}</strong><small>{note.sourceTitle}</small></span></div>
-            )) : <p className="memory-empty-copy">No notes saved yet.</p>}
-          </div>
-          <div>
-            <p className="memory-label">EverOS retrieval</p>
-            {loading ? (
-              <div className="memory-loading"><Loader2 className="spin" size={18} /> Searching hybrid memory…</div>
-            ) : evidence.length ? evidence.map((item, index) => (
-              <article className="memory-result" key={`${index}-${item.slice(0, 20)}`}>
-                <BrainCircuit size={14} />
-                <p>{item.slice(0, 600)}</p>
-              </article>
-            )) : <p className="memory-empty-copy">No remote evidence matched this search. Try a concept or paper title.</p>}
-          </div>
-        </div>
-      </section>
-    </div>
   );
 }
 
