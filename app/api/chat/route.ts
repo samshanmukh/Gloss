@@ -11,6 +11,7 @@ type ChatRequest = {
   paperTitle?: string;
   question?: string;
   history?: ModelMessage[];
+  imageData?: string;
 };
 
 export async function POST(request: Request) {
@@ -20,6 +21,12 @@ export async function POST(request: Request) {
     const passage = body.passage?.trim();
     const paperTitle = body.paperTitle?.trim() || "Uploaded PDF";
     const question = body.question?.trim();
+    const imageData =
+      typeof body.imageData === "string" &&
+      /^data:image\/(?:png|jpeg|webp);base64,/i.test(body.imageData) &&
+      body.imageData.length <= 1_500_000
+        ? body.imageData
+        : undefined;
 
     if (!passage || passage.length > 12_000) {
       return NextResponse.json({ error: "A source passage under 12,000 characters is required" }, { status: 400 });
@@ -59,6 +66,7 @@ export async function POST(request: Request) {
       question,
       history,
       learnerMemory: evidence,
+      imageData,
     });
 
     const sessionId = `gloss_chat_${paperTitle.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 64)}`;

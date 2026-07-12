@@ -40,7 +40,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CommandPalette from "@/components/CommandPalette";
-import PdfReader from "@/components/PdfReader";
+import PdfReader, { PdfSelectedContent } from "@/components/PdfReader";
 import {
   AppNotification,
   BASE_CONCEPTS,
@@ -119,7 +119,7 @@ export default function GlossApp() {
   const [activeView, setActiveView] = useState<NavView>("library");
   const [source, setSource] = useState<SourceId>("cortical");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfSelection, setPdfSelection] = useState<{ text: string; page: number } | null>(null);
+  const [pdfSelection, setPdfSelection] = useState<PdfSelectedContent | null>(null);
   const [memory, setMemory] = useState(initialMemory(DEFAULT_LEARNER.id));
   const [readingPanel, setReadingPanel] = useState<ReadingPanel | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -172,7 +172,16 @@ export default function GlossApp() {
     setNotes(noteStore.read(active.id));
     setKnowledgeGraph(graphStore.read(active.id));
     setReadingSeconds(readingTimeStore.read(active.id));
-    void pdfStore.read(active.id).then((storedPdf) => setPdfFile(storedPdf)).catch(() => setPdfFile(null));
+    const params = new URLSearchParams(window.location.search);
+    const requestedPaper = params.get("paper");
+    const requestedPdf = params.get("pdf");
+    if (requestedPaper === "cortical" || requestedPaper === "td") setSource(requestedPaper);
+    void (requestedPdf ? pdfStore.get(active.id, requestedPdf) : pdfStore.read(active.id))
+      .then((storedPdf) => {
+        setPdfFile(storedPdf);
+        if (requestedPdf && storedPdf) setSource("pdf");
+      })
+      .catch(() => setPdfFile(null));
     setSyncState("checking");
     void memoryAdapter
       .retrieve(active.id, "confirmed concepts, learning style, and understanding of reward signals")
@@ -261,7 +270,8 @@ export default function GlossApp() {
     setNote("");
     setActiveView("library");
     try {
-      await pdfStore.write(learnerId, file);
+      const id = await pdfStore.write(learnerId, file);
+      window.history.replaceState(null, "", `/reader?pdf=${encodeURIComponent(id)}`);
       notify("PDF saved to your private library", `${file.name} will be restored after refresh`);
     } catch {
       notify("PDF opened for this session", "Browser storage could not persist the file");
@@ -326,7 +336,14 @@ export default function GlossApp() {
     // in-flight "Thinking…" entry isn't dropped mid-answer.
     if (activeConceptId !== conceptId) setQaEntries(concept.thread);
     setActiveConceptId(conceptId);
-    if (source === "pdf") setPdfSelection({ text: concept.phrase, page: page ?? concept.page ?? 1 });
+    if (source === "pdf") {
+      setPdfSelection({
+        id: `concept-${concept.id}`,
+        kind: "text",
+        text: concept.phrase,
+        page: page ?? concept.page ?? 1,
+      });
+    }
     setReadingPanel("explain");
     setActiveView("library");
   }
@@ -347,27 +364,46 @@ export default function GlossApp() {
     }
   }
 
-  function onPdfSelect(text: string, page: number) {
-    const concept = rememberConcept(text, { sourceTitle: pdfFile?.name ?? "Uploaded PDF", page });
-    setPdfSelection({ text, page });
+  function onPdfSelect(selection: PdfSelectedContent) {
+    setPdfSelection(selection);
     setReadingPanel("explain");
-    if (activeConceptId !== concept.id) setQaEntries(concept.thread);
-    setActiveConceptId(concept.id);
-    if (concept.thread.length === 0) {
-      void askQuestion("Explain this passage in simple terms.", {
-        selection: { text, page },
-        conceptId: concept.id,
-        thread: concept.thread,
+
+    // Text selections feed the familiarity loop: find-or-create the concept
+    // and resume its saved conversation instead of starting fresh.
+    if (selection.kind === "text") {
+      const concept = rememberConcept(selection.text, {
+        sourceTitle: pdfFile?.name ?? "Uploaded PDF",
+        page: selection.page,
       });
+      if (activeConceptId !== concept.id) setQaEntries(concept.thread);
+      setActiveConceptId(concept.id);
+      if (concept.thread.length === 0) {
+        void askQuestion("Explain this passage in simple terms.", {
+          selection,
+          conceptId: concept.id,
+          thread: concept.thread,
+        });
+      }
+      return;
     }
+
+    // Figures and formulas have no phrase to highlight — plain multimodal explanation.
+    setActiveConceptId(null);
+    setQaEntries([]);
+    void askQuestion(
+      selection.kind === "image"
+        ? "Explain this figure or diagram. Walk through its important labels, arrows, and relationships."
+        : "Explain this formula in simple terms, including what each symbol means and why it matters.",
+      { selection, conceptId: null, thread: [] },
+    );
   }
 
   async function askQuestion(
     question: string,
-    options?: { selection?: { text: string; page: number }; conceptId?: string; thread?: QAEntry[] },
+    options?: { selection?: PdfSelectedContent; conceptId?: string | null; thread?: QAEntry[] },
   ) {
     const active = options?.selection ?? pdfSelection;
-    const conceptId = options?.conceptId ?? activeConceptId;
+    const conceptId = options?.conceptId === undefined ? activeConceptId : options.conceptId;
     const priorEntries = options?.thread ?? qaEntries;
     const entry: QAEntry = { id: nextId("qa"), question, answer: "", pending: true };
     setQaEntries((current) => [...current, entry]);
@@ -388,7 +424,7 @@ export default function GlossApp() {
       ]);
 
     try {
-      const answer = await memoryAdapter.ask({ learnerId, question, passage, paperTitle, history });
+      const answer = await memoryAdapter.ask({ learnerId, question, passage, paperTitle, history, imageData: active?.imageData });
       setQaEntries((current) =>
         current.map((item) => (item.id === entry.id ? { ...item, answer, pending: false } : item)),
       );
@@ -606,6 +642,10 @@ export default function GlossApp() {
           }
         }}
         onUpload={openPdf}
+        onLibrary={() => {
+          setActiveView("library");
+          window.location.assign("/library");
+        }}
         onKnowledge={openKnowledge}
         onNotes={() => {
           setActiveView("notes");
@@ -649,7 +689,11 @@ export default function GlossApp() {
               key={`${pdfFile.name}-${pdfFile.size}`}
               file={pdfFile}
               concepts={concepts}
-              onSelectText={onPdfSelect}
+              onSelectContent={onPdfSelect}
+              onClearSelection={() => {
+                setPdfSelection(null);
+                setActiveConceptId(null);
+              }}
               onConceptClick={openConcept}
             />
           ) : (
@@ -739,6 +783,7 @@ function Sidebar({
   onOpenPaper,
   onOpenPdf,
   onUpload,
+  onLibrary,
   onKnowledge,
   onNotes,
   onMemory,
@@ -755,6 +800,7 @@ function Sidebar({
   onOpenPaper: (paper: PaperId) => void;
   onOpenPdf: () => void;
   onUpload: (file: File) => void;
+  onLibrary: () => void;
   onKnowledge: () => void;
   onNotes: () => void;
   onMemory: () => void;
@@ -790,7 +836,7 @@ function Sidebar({
         </button>
       </div>
       <nav className="primary-nav" aria-label="Primary navigation">
-        <button className={activeView === "library" ? "active" : ""} onClick={() => source === "pdf" ? onOpenPdf() : onOpenPaper(source as PaperId)}><Library size={17} /> Library</button>
+        <button className={activeView === "library" ? "active" : ""} onClick={onLibrary}><Library size={17} /> Library</button>
         <button className={activeView === "knowledge" ? "active" : ""} onClick={onKnowledge}><Network size={17} /> Knowledge</button>
         <button className={activeView === "notes" ? "active" : ""} onClick={onNotes}><StickyNote size={17} /> Notes</button>
         <button className={activeView === "memory" ? "active" : ""} onClick={onMemory}><BrainCircuit size={17} /> Memory</button>
@@ -1139,7 +1185,7 @@ function ExplanationPane({
   onClose,
 }: {
   source: SourceId;
-  pdfSelection: { text: string; page: number } | null;
+  pdfSelection: PdfSelectedContent | null;
   activeConcept: ExplainedConcept | null;
   explained: boolean;
   activePanel: ReadingPanel;
@@ -1277,7 +1323,7 @@ function ExplanationPane({
 
           {isPdf && pdfSelection ? (
             <>
-              <p className="eyebrow">Selected · page {pdfSelection.page}</p>
+              <p className="eyebrow">Selected {pdfSelection.kind} · page {pdfSelection.page}</p>
               <blockquote className="pdf-quote">
                 {pdfSelection.text.slice(0, 280)}
                 {pdfSelection.text.length > 280 ? "…" : ""}
