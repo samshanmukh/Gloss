@@ -40,7 +40,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CommandPalette from "@/components/CommandPalette";
-import PdfReader, { PdfSelectedContent } from "@/components/PdfReader";
+import PdfReader, { PdfPageContext, PdfSelectedContent } from "@/components/PdfReader";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import {
   AppNotification,
@@ -122,6 +122,8 @@ export default function GlossApp() {
   const [source, setSource] = useState<SourceId>("cortical");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfSelection, setPdfSelection] = useState<PdfSelectedContent | null>(null);
+  const [pdfPageContext, setPdfPageContext] = useState<PdfPageContext | null>(null);
+  const [pdfFocusPage, setPdfFocusPage] = useState<number | undefined>();
   const [memory, setMemory] = useState(initialMemory(DEFAULT_LEARNER.id));
   const [readingPanel, setReadingPanel] = useState<ReadingPanel | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -364,6 +366,36 @@ export default function GlossApp() {
     if (source === "td" && memory.mastered.includes("reward_signal")) {
       window.setTimeout(() => setCrossPaperConnected(true), 400);
     }
+  }
+
+  function contextualExplain() {
+    if (source !== "pdf") {
+      explainSelection();
+      return;
+    }
+    setReadingPanel("explain");
+    if (pdfSelection) return;
+    if (pdfPageContext?.text.trim()) {
+      const pageSelection: PdfSelectedContent = {
+        id: `page-${pdfPageContext.page}-${Date.now()}`,
+        kind: "text",
+        text: pdfPageContext.text.slice(0, 8_000),
+        page: pdfPageContext.page,
+      };
+      setPdfSelection(pageSelection);
+      setQaEntries([]);
+      void askQuestion(
+        `Summarize page ${pdfPageContext.page}. Explain its main claim, important evidence, and any terms I should understand.`,
+        { selection: pageSelection, conceptId: null, thread: [] },
+      );
+      return;
+    }
+    notify(
+      pdfPageContext?.ocrState === "running" ? "OCR is still reading this page" : "Select something to explain",
+      pdfPageContext?.ocrState === "running"
+        ? "Wait for OCR to finish, then Explain can summarize the page."
+        : "Highlight text or use Explain this on a detected figure or formula.",
+    );
   }
 
   function onPdfSelect(selection: PdfSelectedContent) {
@@ -688,7 +720,7 @@ export default function GlossApp() {
           openMenu={openMenu}
           onMenu={setOpenMenu}
           onMarkRead={() => setNotifications((current) => current.map((item) => ({ ...item, read: true })))}
-          onExplain={() => setReadingPanel("explain")}
+          onExplain={contextualExplain}
           onTakeNote={() => {
             setActiveView("notes");
             setReadingPanel("explain");
@@ -711,6 +743,8 @@ export default function GlossApp() {
                 setActiveConceptId(null);
               }}
               onConceptClick={openConcept}
+              onPageContext={setPdfPageContext}
+              focusPage={pdfFocusPage}
             />
           ) : (
             <PaperPane
@@ -766,6 +800,10 @@ export default function GlossApp() {
               }}
               onConfirm={() => void confirmUnderstanding()}
               onClose={closeReadingPanel}
+              onCitationClick={(page) => {
+                setPdfFocusPage(page);
+                window.setTimeout(() => setPdfFocusPage(undefined), 0);
+              }}
             />
           )}
         </div>
@@ -1213,6 +1251,7 @@ function ExplanationPane({
   onPanelChange,
   onConfirm,
   onClose,
+  onCitationClick,
 }: {
   source: SourceId;
   pdfSelection: PdfSelectedContent | null;
@@ -1238,6 +1277,7 @@ function ExplanationPane({
   onPanelChange: (panel: "explain" | "notes") => void;
   onConfirm: () => void;
   onClose: () => void;
+  onCitationClick: (page: number) => void;
 }) {
   const [question, setQuestion] = useState("");
   const [editingNote, setEditingNote] = useState<ReadingNote | null>(null);
@@ -1395,6 +1435,17 @@ function ExplanationPane({
                   ) : (
                     <>
                       <p className={`qa-answer ${entry.error ? "error" : ""}`}>{entry.answer}</p>
+                      {!entry.error && (
+                        <div className="answer-provenance">
+                          <button onClick={() => onCitationClick(pdfSelection?.page ?? 12)}>
+                            <FileText size={11} />
+                            {pdfSelection ? `Page ${pdfSelection.page} · selected ${pdfSelection.kind}` : `Page 12 · source passage`}
+                          </button>
+                          <span className={/source (?:does not|doesn't|cannot|isn't)|general knowledge/i.test(entry.answer) ? "general" : "grounded"}>
+                            {/source (?:does not|doesn't|cannot|isn't)|general knowledge/i.test(entry.answer) ? "Includes general knowledge" : "Verified against selection"}
+                          </span>
+                        </div>
+                      )}
                       {!entry.error && <FeedbackRow id={entry.id} feedback={feedback} onFeedback={onFeedback} />}
                     </>
                   )}

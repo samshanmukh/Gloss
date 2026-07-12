@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ImageIcon, Loader2, Maximize2, Sigma, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ImageIcon, Loader2, Maximize2, ScanText, Sigma, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { ConceptMatch, ExplainedConcept, findConceptMatches } from "@/lib/gloss";
@@ -84,18 +84,29 @@ export type PdfSelectedContent = {
   imageData?: string;
 };
 
+export type PdfPageContext = {
+  page: number;
+  text: string;
+  source: "text-layer" | "ocr" | "empty";
+  ocrState: "idle" | "running" | "complete" | "error";
+};
+
 export default function PdfReader({
   file,
   concepts,
   onSelectContent,
   onClearSelection,
   onConceptClick,
+  onPageContext,
+  focusPage,
 }: {
   file: File;
   concepts: ExplainedConcept[];
   onSelectContent: (selection: PdfSelectedContent) => void;
   onClearSelection: () => void;
   onConceptClick: (conceptId: string, page: number) => void;
+  onPageContext: (context: PdfPageContext) => void;
+  focusPage?: number;
 }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
@@ -104,6 +115,9 @@ export default function PdfReader({
   const [selection, setSelection] = useState<PdfSelectedContent | null>(null);
   const [selectionRects, setSelectionRects] = useState<NormalizedRect[]>([]);
   const [regions, setRegions] = useState<DetectedRegion[]>([]);
+  const [ocrWords, setOcrWords] = useState<Array<{ text: string; confidence: number; rect: NormalizedRect }>>([]);
+  const [ocrState, setOcrState] = useState<"idle" | "running" | "complete" | "error">("idle");
+  const [ocrProgress, setOcrProgress] = useState(0);
   const conceptsRef = useRef(concepts);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +191,20 @@ export default function PdfReader({
     textLayerDiv.style.setProperty("--scale-factor", String(scale));
     textLayerDiv.style.setProperty("--total-scale-factor", String(scale));
     const textContent = await pdfPage.getTextContent();
+    const nativeText = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    setOcrWords([]);
+    setOcrState(nativeText.length < 20 ? "running" : "idle");
+    setOcrProgress(0);
+    onPageContext({
+      page,
+      text: nativeText,
+      source: nativeText ? "text-layer" : "empty",
+      ocrState: nativeText.length < 20 ? "running" : "idle",
+    });
     const textLayer = new pdfjs.TextLayer({
       textContentSource: textContent,
       container: textLayerDiv,
@@ -273,10 +301,48 @@ export default function PdfReader({
         });
       }
       setRegions(detected.slice(0, 12));
+      if (nativeText.length < 20) {
+        try {
+          const Tesseract = await import("tesseract.js");
+          const worker = await Tesseract.createWorker("eng", 1, {
+            logger: (message) => {
+              if (message.status === "recognizing text") setOcrProgress(Math.round((message.progress ?? 0) * 100));
+            },
+          });
+          const result = await worker.recognize(canvas, {}, { blocks: true, text: true });
+          await worker.terminate();
+          const words =
+            result.data.blocks?.flatMap((block) =>
+              block.paragraphs.flatMap((paragraph) =>
+                paragraph.lines.flatMap((line) => line.words),
+              ),
+            ) ?? [];
+          const recognized = words
+            .filter((word) => word.text.trim() && word.confidence >= 25)
+            .map((word) => ({
+              text: word.text,
+              confidence: word.confidence,
+              rect: {
+                x: word.bbox.x0 / canvas.width,
+                y: word.bbox.y0 / canvas.height,
+                width: (word.bbox.x1 - word.bbox.x0) / canvas.width,
+                height: (word.bbox.y1 - word.bbox.y0) / canvas.height,
+              },
+            }));
+          const ocrText = result.data.text.replace(/\s+/g, " ").trim();
+          setOcrWords(recognized);
+          setOcrState("complete");
+          setOcrProgress(100);
+          onPageContext({ page, text: ocrText, source: "ocr", ocrState: "complete" });
+        } catch {
+          setOcrState("error");
+          onPageContext({ page, text: "", source: "empty", ocrState: "error" });
+        }
+      }
     } catch {
       // Render tasks are cancelled when the page or zoom changes quickly.
     }
-  }, [doc, page, zoomIndex]);
+  }, [doc, onPageContext, page, zoomIndex]);
 
   useEffect(() => {
     void renderPage();
@@ -287,12 +353,19 @@ export default function PdfReader({
     if (textLayerRef.current) applyConceptHighlights(textLayerRef.current, concepts);
   }, [concepts]);
 
+  useEffect(() => {
+    if (focusPage && doc && focusPage >= 1 && focusPage <= doc.numPages) {
+      window.setTimeout(() => setPage(focusPage), 0);
+    }
+  }, [doc, focusPage]);
+
   function captureSelection() {
     const browserSelection = window.getSelection();
     const text = browserSelection?.toString().replace(/\s+/g, " ").trim() ?? "";
     const wrap = pageWrapRef.current;
     if (!browserSelection || !wrap || text.length < MIN_SELECTION_LENGTH || browserSelection.rangeCount === 0) return;
-    if (!textLayerRef.current?.contains(browserSelection.anchorNode)) return;
+    const ocrLayer = wrap.querySelector(".pdf-ocr-layer");
+    if (!textLayerRef.current?.contains(browserSelection.anchorNode) && !ocrLayer?.contains(browserSelection.anchorNode)) return;
     const container = wrap.getBoundingClientRect();
     const rects = Array.from(browserSelection.getRangeAt(0).getClientRects())
       .filter((rect) => rect.width > 1 && rect.height > 1)
@@ -409,6 +482,22 @@ export default function PdfReader({
         <div className={`pdf-page-wrap ${status === "ready" ? "" : "hidden"}`} ref={pageWrapRef}>
           <canvas ref={canvasRef} />
           <div className="textLayer pdf-text-layer" ref={textLayerRef} />
+          {ocrWords.length > 0 && (
+            <div className="pdf-ocr-layer" aria-label="OCR text layer">
+              {ocrWords.map((word, index) => (
+                <span
+                  key={`${word.text}-${index}`}
+                  title={`${Math.round(word.confidence)}% OCR confidence`}
+                  style={{
+                    left: `${word.rect.x * 100}%`,
+                    top: `${word.rect.y * 100}%`,
+                    width: `${word.rect.width * 100}%`,
+                    height: `${word.rect.height * 100}%`,
+                  }}
+                >{word.text}</span>
+              ))}
+            </div>
+          )}
           {regions.map((region) => (
             <div
               className={`pdf-smart-region ${region.kind} ${selection?.id === region.id ? "active" : ""}`}
@@ -441,6 +530,8 @@ export default function PdfReader({
             />
           ))}
         </div>
+        {ocrState === "running" && <div className="pdf-ocr-status"><ScanText size={13} /><span>Recognizing scanned page… {ocrProgress}%</span></div>}
+        {ocrState === "complete" && <div className="pdf-ocr-status complete"><Check size={13} /><span>OCR text is searchable and selectable</span></div>}
         {selection && (
           <div className="pdf-explain-bar pop-in">
             <span className={`pdf-selection-kind ${selection.kind}`}>{selection.kind === "image" ? <ImageIcon size={12} /> : selection.kind === "formula" ? <Sigma size={12} /> : <Sparkles size={12} />}{selection.kind}</span>
